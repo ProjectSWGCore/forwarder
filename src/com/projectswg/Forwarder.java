@@ -1,11 +1,16 @@
 package com.projectswg;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.event.EventHandler;
 import javafx.scene.Scene;
+import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.GridPane;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
@@ -26,6 +31,8 @@ public class Forwarder extends Application {
 	private final ClientConnection client;
 	private final AtomicLong receivedBytes;
 	private final AtomicLong transmittedBytes;
+	private final TextField serverIpField;
+	private final TextField serverPortField;
 	private final Text serverConnectionText;
 	private final Text clientConnectionText;
 	private final Text serverReceivedText;
@@ -38,10 +45,21 @@ public class Forwarder extends Application {
 	public Forwarder() {
 		receivedBytes = new AtomicLong(0);
 		transmittedBytes = new AtomicLong(0);
+		serverIpField = new TextField(ServerConnection.DEFAULT_ADDR.getHostAddress());
+		serverPortField = new TextField(Integer.toString(ServerConnection.DEFAULT_PORT));
 		serverConnectionText = new Text(String.format(SERVER_CONN_STRING, getConnectionStatus(false)));
 		clientConnectionText = new Text(String.format(CLIENT_CONN_STRING, getConnectionStatus(false)));
 		serverReceivedText = new Text(String.format(SERVER_RX_STRING, getByteName(receivedBytes.get())));
 		serverTransmittedText = new Text(String.format(SERVER_TX_STRING, getByteName(transmittedBytes.get())));
+		EventHandler<KeyEvent> handler = new EventHandler<KeyEvent>() {
+			@Override
+			public void handle(KeyEvent event) {
+				if (event.getCode() == KeyCode.ENTER)
+					updateServerIp();
+			}
+		};
+		serverIpField.setOnKeyPressed(handler);
+		serverPortField.setOnKeyPressed(handler);
 		server = new ServerConnection();
 		client = new ClientConnection(44453, 44463);
 		client.setCallback(new ClientCallback() {
@@ -89,15 +107,29 @@ public class Forwarder extends Application {
 		client.stop();
 	}
 	
+	private void updateServerIp() {
+		try {
+			InetAddress addr = InetAddress.getByName(serverIpField.getText());
+			int port = Integer.parseInt(serverPortField.getText());
+			terminate();
+			server.setRemoteAddress(addr, port);
+			initialize();
+		} catch (UnknownHostException e) {
+			e.printStackTrace();
+		}
+	}
+	
 	@Override
 	public void start(Stage primaryStage) throws Exception {
 		initialize();
 		GridPane root = new GridPane();
-		root.add(serverConnectionText, 0, 0);
-		root.add(clientConnectionText, 0, 1);
-		root.add(serverReceivedText, 0, 2);
-		root.add(serverTransmittedText, 0, 3);
-		Scene scene = new Scene(root, 200, 100);
+		root.add(serverIpField, 0, 0);
+		root.add(serverPortField, 1, 0);
+		root.add(serverConnectionText, 0, 1);
+		root.add(clientConnectionText, 0, 2);
+		root.add(serverReceivedText, 0, 3);
+		root.add(serverTransmittedText, 0, 4);
+		Scene scene = new Scene(root, 300, 160);
 		scene.setRoot(root);
 		primaryStage.setTitle("Holocore Forwarder");
 		primaryStage.setScene(scene);

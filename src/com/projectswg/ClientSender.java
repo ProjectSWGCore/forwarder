@@ -16,9 +16,11 @@ import com.projectswg.networking.UDPServer;
 import com.projectswg.networking.UDPServer.UDPCallback;
 import com.projectswg.networking.encryption.Encryption;
 import com.projectswg.networking.soe.DataChannelA;
+import com.projectswg.networking.soe.Disconnect;
 import com.projectswg.networking.soe.Fragmented;
 import com.projectswg.networking.soe.SequencedPacket;
 import com.projectswg.networking.soe.SessionResponse;
+import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 
 public class ClientSender {
 	
@@ -32,6 +34,7 @@ public class ClientSender {
 	private Queue<byte []> inboundQueue;
 	private ExecutorService executor;
 	private short txSequence;
+	private int connectionId;
 	private int port;
 	private int loginPort;
 	private int zonePort;
@@ -43,6 +46,7 @@ public class ClientSender {
 		this.zonePort = zonePort;
 		sentPackets = new LinkedList<>();
 		inboundQueue = new LinkedList<>();
+		connectionId = -1;
 		txSequence = 0;
 		port = 0;
 		zone = false;
@@ -63,6 +67,7 @@ public class ClientSender {
 	}
 	
 	public void stop() {
+		disconnect(DisconnectReason.APPLICATION);
 		executor.shutdownNow();
 		loginServer.close();
 		zoneServer.close();
@@ -90,6 +95,16 @@ public class ClientSender {
 	
 	public void setPort(int port) {
 		this.port = port;
+	}
+	
+	public void setConnectionId(int connectionId) {
+		this.connectionId = connectionId;
+	}
+	
+	public void disconnect(DisconnectReason reason) {
+		if (connectionId != -1)
+			sendRaw(new Disconnect(connectionId, reason).encode().array());
+		connectionId = -1;
 	}
 	
 	public void reset() {

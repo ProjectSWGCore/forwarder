@@ -14,8 +14,8 @@ import com.projectswg.networking.encryption.Compression;
 
 public class ServerConnection {
 	
-	private static final InetAddress REMOTE_ADDR;
-	private static final int REMOTE_PORT = 44463;
+	public static final InetAddress DEFAULT_ADDR;
+	public static final int DEFAULT_PORT = 44463;
 	
 	static {
 		InetAddress addr;
@@ -25,21 +25,25 @@ public class ServerConnection {
 			addr = InetAddress.getLoopbackAddress();
 			e.printStackTrace();
 		}
-		REMOTE_ADDR = addr;
+		DEFAULT_ADDR = addr;
 	}
 	
 	private final Object bufferMutex;
+	private final Queue<byte []> outQueue;
 	private Socket socket;
 	private boolean connected;
 	private byte [] buffer;
 	private ServerCallback callback;
-	private Queue<byte []> outQueue;
+	private InetAddress addr;
+	private int port;
 	
 	private Thread thread;
 	private boolean running;
 	
 	public ServerConnection() {
 		bufferMutex = new Object();
+		addr = DEFAULT_ADDR;
+		port = DEFAULT_PORT;
 		outQueue = new LinkedList<>();
 		socket = null;
 		thread = null;
@@ -62,6 +66,11 @@ public class ServerConnection {
 		if (thread != null)
 			thread.interrupt();
 		thread = null;
+	}
+	
+	public void setRemoteAddress(InetAddress addr, int port) {
+		this.addr = addr;
+		this.port = port;
 	}
 	
 	public void setCallback(ServerCallback callback) {
@@ -114,8 +123,16 @@ public class ServerConnection {
 	}
 	
 	private void run() {
-		if (!connected)
-			connect();
+		InputStream input = null;
+		if (!connected) {
+			if (connect()) {
+				try {
+					input = socket.getInputStream();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
 		byte [] buffer = new byte[2*1024];
 		while (running) {
 			if (!connected) {
@@ -124,16 +141,21 @@ public class ServerConnection {
 				} catch (InterruptedException e) {
 					break;
 				}
-				connect();
+				if (connect()) {
+					try {
+						input = socket.getInputStream();
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				}
 			} else {
-				read(buffer);
+				read(input, buffer);
 			}
 		}
 	}
 	
-	private void read(byte [] buffer) {
+	private void read(InputStream input, byte [] buffer) {
 		try {
-			InputStream input = socket.getInputStream();
 			int n = input.read(buffer);
 			if (n == -1)
 				disconnect();
@@ -144,16 +166,23 @@ public class ServerConnection {
 				e.printStackTrace();
 				disconnect();
 			}
+		} catch (Exception e) {
+			System.err.println("Failed to process buffer!");
+			e.printStackTrace();
+			System.exit(0);
 		}
 	}
 	
 	private void process(byte [] buffer, int length) {
 		if (length <= 0)
 			return;
-		ByteBuffer data = ByteBuffer.allocate(length+this.buffer.length).order(ByteOrder.LITTLE_ENDIAN);
-		data.put(this.buffer);
+		ByteBuffer data;
+		synchronized (bufferMutex) {
+			data = ByteBuffer.allocate(length+this.buffer.length).order(ByteOrder.LITTLE_ENDIAN);
+			data.put(this.buffer);
+		}
 		data.put(buffer, 0, length);
-		data.position(0);
+		data.flip();
 		while (data.remaining() >= 5) {
 			if (!processPacket(data))
 				break;
@@ -169,7 +198,8 @@ public class ServerConnection {
 		try {
 			if (socket != null)
 				disconnect();
-			socket = new Socket(REMOTE_ADDR, REMOTE_PORT);
+			socket = new Socket(addr, port);
+			buffer = new byte[0];
 			while (!outQueue.isEmpty())
 				forward(outQueue.poll());
 			if (!connected && callback != null)
@@ -191,6 +221,7 @@ public class ServerConnection {
 		try {
 			socket.close();
 			socket = null;
+			buffer = new byte[0];
 			return true;
 		} catch (IOException e) {
 			e.printStackTrace();

@@ -143,6 +143,7 @@ public class ClientReceiver {
 			System.out.println("Login Session Request");
 			setConnectionState(ConnectionState.LOGIN_CONNECTED);
 		}
+		sender.setConnectionId(request.getConnectionID());
 		sender.send(new SessionResponse(request.getConnectionID(), 0, (byte) 2, (byte) 1, (byte) 4, MAX_PACKET_SIZE));
 		sender.send(new ServerString("ProjectSWG:1"), new ServerId(1));
 		if (callback != null && !zone)

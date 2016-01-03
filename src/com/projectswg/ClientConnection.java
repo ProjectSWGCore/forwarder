@@ -36,6 +36,8 @@ public class ClientConnection {
 	public void stop() {
 		sender.stop();
 		receiver.stop();
+		if (callback != null)
+			callback.onDisconnected();
 	}
 	
 	public void setCallback(ClientCallback callback) {
