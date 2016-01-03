@@ -5,6 +5,7 @@ import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.UDPServer.UDPPacket;
@@ -27,6 +28,7 @@ public class ClientReceiver {
 	private static final int MAX_PACKET_SIZE = 496;
 	
 	private final NetInterceptor interceptor;
+	private final AtomicLong lastPacket;
 	private ExecutorService executor;
 	private ClientSender sender;
 	private ClientReceiverCallback callback;
@@ -37,6 +39,7 @@ public class ClientReceiver {
 	
 	public ClientReceiver(NetInterceptor interceptor) {
 		this.interceptor = interceptor;
+		this.lastPacket = new AtomicLong(0);
 		setConnectionState(ConnectionState.DISCONNECTED);
 		sender = null;
 		callback = null;
@@ -65,11 +68,16 @@ public class ClientReceiver {
 		rxSequence = -1;
 	}
 	
+	public double getTimeSinceLastPacket() {
+		return (System.nanoTime() - lastPacket.get()) / 1E6;
+	}
+	
 	public void onPacket(boolean zone, UDPPacket packet) {
 		if (packet.getData().length < 2)
 			return;
 		if (zone && packet.getData().length == 4) { // Ping
 			sender.sendRaw(packet.getPort(), packet.getAddress(), packet.getData());
+			lastPacket.set(System.nanoTime());
 			return;
 		}
 		ByteBuffer data = ByteBuffer.wrap(packet.getData()).order(ByteOrder.BIG_ENDIAN);
@@ -79,10 +87,12 @@ public class ClientReceiver {
 			this.port = packet.getPort();
 			sender.setZone(zone);
 			sender.setPort(packet.getPort());
+			lastPacket.set(System.nanoTime());
 			process(data);
 		} else {
 			if (packet.getPort() != port || port == 0)
 				return;
+			lastPacket.set(System.nanoTime());
 			executor.submit(() -> {
 				process(ByteBuffer.wrap(Encryption.decode(data.array(), 0)).order(ByteOrder.BIG_ENDIAN));
 			});
@@ -193,11 +203,10 @@ public class ClientReceiver {
 	}
 	
 	private void onOutOfOrder(OutOfOrder ooo) {
-		System.out.println("OOO " + ooo.getSequence());
+		
 	}
 	
 	private void onAcknowledge(Acknowledge ack) {
-		System.out.println("ACK " + ack.getSequence());
 		sender.onAcknowledge(ack.getSequence());
 	}
 	

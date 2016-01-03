@@ -103,7 +103,7 @@ public class ClientSender {
 	
 	public void disconnect(DisconnectReason reason) {
 		if (connectionId != -1)
-			sendRaw(new Disconnect(connectionId, reason).encode().array());
+			send(new Disconnect(connectionId, reason));
 		connectionId = -1;
 	}
 	
