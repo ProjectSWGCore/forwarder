@@ -78,6 +78,8 @@ public class ClientReceiver {
 		if (zone && packet.getData().length == 4) { // Ping
 			sender.sendRaw(packet.getPort(), packet.getAddress(), packet.getData());
 			lastPacket.set(System.nanoTime());
+			if (callback != null)
+				callback.onUdpRecv(zone, packet.getData());
 			return;
 		}
 		ByteBuffer data = ByteBuffer.wrap(packet.getData()).order(ByteOrder.BIG_ENDIAN);
@@ -89,12 +91,17 @@ public class ClientReceiver {
 			sender.setPort(packet.getPort());
 			lastPacket.set(System.nanoTime());
 			process(data);
+			if (callback != null)
+				callback.onUdpRecv(zone, data.array());
 		} else {
 			if (packet.getPort() != port || port == 0)
 				return;
 			lastPacket.set(System.nanoTime());
 			executor.submit(() -> {
-				process(ByteBuffer.wrap(Encryption.decode(data.array(), 0)).order(ByteOrder.BIG_ENDIAN));
+				ByteBuffer decoded = ByteBuffer.wrap(Encryption.decode(data.array(), 0)).order(ByteOrder.BIG_ENDIAN);
+				process(decoded);
+				if (callback != null)
+					callback.onUdpRecv(zone, decoded.array());
 			});
 		}
 	}
@@ -203,10 +210,11 @@ public class ClientReceiver {
 	}
 	
 	private void onOutOfOrder(OutOfOrder ooo) {
-		
+		System.out.println("OOO " + ooo.getSequence());
 	}
 	
 	private void onAcknowledge(Acknowledge ack) {
+		System.out.println("ACK " + ack.getSequence());
 		sender.onAcknowledge(ack.getSequence());
 	}
 	
@@ -221,6 +229,7 @@ public class ClientReceiver {
 		void onDisconnected();
 		void onConnectionChanged(ConnectionState state);
 		void onPacket(byte [] data);
+		void onUdpRecv(boolean zone, byte [] data);
 	}
 	
 	public enum ConnectionState {

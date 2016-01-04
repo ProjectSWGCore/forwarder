@@ -23,6 +23,7 @@ public class ClientConnection {
 		interceptor = new NetInterceptor();
 		sender = new ClientSender(interceptor, loginPort, zonePort);
 		receiver = new ClientReceiver(interceptor);
+		sender.setClientReceiver(receiver);
 		receiver.setClientSender(sender);
 	}
 	
@@ -34,10 +35,12 @@ public class ClientConnection {
 		sender.setZoneCallback((packet) -> receiver.onPacket(true, packet));
 		receiver.setReceiverCallback(new ClientReceiverCallback() {
 			public void onPacket(byte[] data) { ClientConnection.this.onPacket(data); }
+			public void onUdpRecv(boolean zone, byte[] data) { ClientConnection.this.onUdpRecv(zone, data); }
 			public void onDisconnected() { ClientConnection.this.onDisconnected(); }
 			public void onConnected() { ClientConnection.this.onConnected(); }
 			public void onConnectionChanged(ConnectionState state) { ClientConnection.this.onConnectionStateChanged(state); }
 		});
+		sender.setSenderCallback((zone, data) -> onUdpSent(zone, data));
 		pinger = Executors.newSingleThreadScheduledExecutor();
 		pinger.scheduleAtFixedRate(()->ping(), 0, 1000, TimeUnit.MILLISECONDS);
 	}
@@ -61,6 +64,16 @@ public class ClientConnection {
 	private void onPacket(byte [] data) {
 		if (callback != null)
 			callback.onPacket(data);
+	}
+	
+	private void onUdpSent(boolean zone, byte [] data) {
+		if (callback != null)
+			callback.onUdpSent(zone, data);
+	}
+	
+	private void onUdpRecv(boolean zone, byte [] data) {
+		if (callback != null)
+			callback.onUdpRecv(zone, data);
 	}
 	
 	private void onDisconnected() {
@@ -105,6 +118,8 @@ public class ClientConnection {
 		void onConnected();
 		void onDisconnected();
 		void onPacket(byte [] data);
+		void onUdpSent(boolean zone, byte [] data);
+		void onUdpRecv(boolean zone, byte [] data);
 	}
 	
 }

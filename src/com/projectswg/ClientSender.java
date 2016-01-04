@@ -25,7 +25,6 @@ import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 public class ClientSender {
 	
 	private static final InetAddress ADDR = InetAddress.getLoopbackAddress();
-	private static final int MAX_PACKET_SIZE = 496;
 	
 	private final NetInterceptor interceptor;
 	private UDPServer loginServer;
@@ -33,6 +32,8 @@ public class ClientSender {
 	private Queue<SequencedOutbound> sentPackets;
 	private Queue<byte []> inboundQueue;
 	private ExecutorService executor;
+	private ClientSenderCallback callback;
+	private ClientReceiver receiver;
 	private short txSequence;
 	private int connectionId;
 	private int port;
@@ -73,12 +74,20 @@ public class ClientSender {
 		zoneServer.close();
 	}
 	
+	public void setClientReceiver(ClientReceiver receiver) {
+		this.receiver = receiver;
+	}
+	
 	public void setLoginCallback(UDPCallback callback) {
 		loginServer.setCallback(callback);
 	}
 	
 	public void setZoneCallback(UDPCallback callback) {
 		zoneServer.setCallback(callback);
+	}
+	
+	public void setSenderCallback(ClientSenderCallback callback) {
+		this.callback = callback;
 	}
 	
 	public int getZonePort() {
@@ -147,6 +156,8 @@ public class ClientSender {
 			zoneServer.send(port, addr, data);
 		else
 			loginServer.send(port, addr, data);
+		if (callback != null)
+			callback.onUdpSent(zone, data);
 	}
 	
 	public void send(Packet packet) {
@@ -167,49 +178,24 @@ public class ClientSender {
 	
 	private void outboundRunnable() {
 		final InetAddress addr = InetAddress.getLoopbackAddress();
+		double time = 0;
+		long lastBurst = 0;
+		double timeSinceBurst = 0;
 		while (true) {
-			synchronized (sentPackets) {
-				int sent = 0;
-				for (SequencedOutbound packet : sentPackets) {
-					sendRaw(port, addr, packet.getData());
-					Thread.yield();
-					if (++sent >= 500)
-						break;
-				}
-			}
-			try {
-				Thread.sleep(50);
-			} catch (InterruptedException e) {
-				break;
-			}
-		}
-	}
-	
-	private void inboundRunnable() {
-		byte [] data;
-		Queue<byte []> outbound = new ArrayBlockingQueue<>(32, true);
-		int size = 0;
-		while (true) {
-			size = 6;
-			synchronized (inboundQueue) {
-				while (!inboundQueue.isEmpty()) {
-					data = interceptor.interceptServer(inboundQueue.poll());
-					if ((size + data.length > MAX_PACKET_SIZE-7 && !outbound.isEmpty()) || outbound.size() == 32) {
-						createOutboundPacket(outbound, size);
-						size = 6;
+			time = receiver.getTimeSinceLastPacket();
+			timeSinceBurst = (System.nanoTime() - lastBurst) / 1E6;
+			if (time <= timeSinceBurst || (time >= 100 && timeSinceBurst >= 500)) {
+				synchronized (sentPackets) {
+					int sent = 0;
+					for (SequencedOutbound packet : sentPackets) {
+						sendRaw(port, addr, packet.getData());
+						Thread.yield();
+						if (++sent >= 500)
+							break;
 					}
-					outbound.add(data);
-					size += data.length + 1 + (data.length >= 0xFF ? 2 : 0);
-					if (size > MAX_PACKET_SIZE-4) {
-						createOutboundPacket(outbound, size);
-						size = 6;
-					}
-					Thread.yield();
 				}
+				lastBurst = System.nanoTime();
 			}
-			if (!outbound.isEmpty())
-				createOutboundPacket(outbound, size);
-			size = 0;
 			try {
 				Thread.sleep(25);
 			} catch (InterruptedException e) {
@@ -218,8 +204,48 @@ public class ClientSender {
 		}
 	}
 	
+	private void inboundRunnable() {
+		final int dataHeaderSize = 8;
+		byte [] data;
+		Queue<byte []> outbound = new ArrayBlockingQueue<>(8, true);
+		int size = 0;
+		while (true) {
+			size = dataHeaderSize;
+			synchronized (inboundQueue) {
+				while (!inboundQueue.isEmpty()) {
+					data = interceptor.interceptServer(inboundQueue.poll());
+					if ((size + getPacketLength(data) >= 496 && !outbound.isEmpty()) || outbound.size() == 8) {
+						createOutboundPacket(outbound, size);
+						size = dataHeaderSize;
+					}
+					outbound.add(data);
+					size += getPacketLength(data);
+					if (size >= 496) {
+						createOutboundPacket(outbound, size);
+						size = dataHeaderSize;
+					}
+					Thread.yield();
+				}
+			}
+			if (!outbound.isEmpty())
+				createOutboundPacket(outbound, size);
+			try {
+				Thread.sleep(25);
+			} catch (InterruptedException e) {
+				break;
+			}
+		}
+	}
+	
+	private int getPacketLength(byte [] data) {
+		if (data.length >= 255)
+			return data.length + 3;
+		else
+			return data.length + 1;
+	}
+	
 	private void createOutboundPacket(Queue<byte []> outbound, int size) {
-		if (size <= MAX_PACKET_SIZE-4) { // Fits into single data packet
+		if (size <= 496) { // Fits into single data packet
 			DataChannelA channel = new DataChannelA();
 			channel.setSequence(txSequence++);
 			while (!outbound.isEmpty())
@@ -227,13 +253,17 @@ public class ClientSender {
 			send(channel);
 		} else { // Fragmented
 			while (!outbound.isEmpty()) {
-				Fragmented [] frags = Fragmented.encode(ByteBuffer.wrap(outbound.poll()), txSequence, MAX_PACKET_SIZE);
+				Fragmented [] frags = Fragmented.encode(ByteBuffer.wrap(outbound.poll()), txSequence);
 				txSequence += frags.length;
 				for (Fragmented frag : frags) {
 					send(frag);
 				}
 			}
 		}
+	}
+	
+	public interface ClientSenderCallback {
+		void onUdpSent(boolean zone, byte [] data);
 	}
 	
 	private static class SequencedOutbound implements SequencedPacket {

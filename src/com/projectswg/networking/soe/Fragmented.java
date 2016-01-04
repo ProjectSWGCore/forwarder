@@ -71,12 +71,12 @@ public class Fragmented extends Packet implements SequencedPacket {
 		return data;
 	}
 	
-	public Fragmented [] encode(int startSequence, int maxSize) {
+	public Fragmented [] encode(int startSequence) {
 		packet.position(0);
 		int ord = 0;
-		Fragmented [] packets = new Fragmented[(int) Math.ceil((packet.remaining()+4)/(maxSize-7.0))];
+		Fragmented [] packets = new Fragmented[(int) Math.ceil((packet.remaining()+4)/489.0)];
 		while (packet.remaining() > 0) {
-			packets[ord] = createSegment(startSequence++, ord++, maxSize, packet);
+			packets[ord] = createSegment(startSequence++, ord++, packet);
 		}
 		return packets;
 	}
@@ -108,19 +108,19 @@ public class Fragmented extends Packet implements SequencedPacket {
 	public short getSequence() { return sequence; }
 	public int getDatLength() { return length; }
 	
-	public static final Fragmented [] encode(ByteBuffer data, int startSequence, int maxSize) {
+	public static final Fragmented [] encode(ByteBuffer data, int startSequence) {
 		data.position(0);
 		int ord = 0;
-		Fragmented [] packets = new Fragmented[(int) Math.ceil((data.remaining()+4)/(maxSize-7.0))];
+		Fragmented [] packets = new Fragmented[(int) Math.ceil((data.remaining()+4)/489.0)];
 		while (data.remaining() > 0) {
-			packets[ord] = createSegment(startSequence++, ord++, maxSize, data);
+			packets[ord] = createSegment(startSequence++, ord++, data);
 		}
 		return packets;
 	}
 	
-	private static final Fragmented createSegment(int startSequence, int ord, int maxSize, ByteBuffer packet) {
+	private static final Fragmented createSegment(int startSequence, int ord, ByteBuffer packet) {
 		int header = (ord == 0) ? 8 : 4;
-		ByteBuffer data = ByteBuffer.allocate(Math.min(packet.remaining()+header, maxSize-3));
+		ByteBuffer data = ByteBuffer.allocate(Math.min(packet.remaining()+header, 493));
 		
 		addNetShort(data, 0x0D);
 		addNetShort(data, startSequence);
