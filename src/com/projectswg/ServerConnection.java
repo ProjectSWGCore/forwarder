@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
@@ -13,20 +12,6 @@ import java.util.Queue;
 import com.projectswg.networking.encryption.Compression;
 
 public class ServerConnection {
-	
-	public static final InetAddress DEFAULT_ADDR;
-	public static final int DEFAULT_PORT = 44463;
-	
-	static {
-		InetAddress addr;
-		try {
-			addr = InetAddress.getByName("::1");
-		} catch (UnknownHostException e) {
-			addr = InetAddress.getLoopbackAddress();
-			e.printStackTrace();
-		}
-		DEFAULT_ADDR = addr;
-	}
 	
 	private final Object bufferMutex;
 	private final Queue<byte []> outQueue;
@@ -40,10 +25,10 @@ public class ServerConnection {
 	private Thread thread;
 	private boolean running;
 	
-	public ServerConnection() {
-		bufferMutex = new Object();
-		addr = DEFAULT_ADDR;
-		port = DEFAULT_PORT;
+	public ServerConnection(InetAddress addr, int port) {
+		this.bufferMutex = new Object();
+		this.addr = addr;
+		this.port = port;
 		outQueue = new LinkedList<>();
 		socket = null;
 		thread = null;
@@ -77,7 +62,7 @@ public class ServerConnection {
 		this.callback = callback;
 	}
 	
-	public boolean forward(byte [] raw) {
+	public boolean send(byte [] raw) {
 		if (socket == null) {
 			outQueue.add(raw);
 			return false;
@@ -201,7 +186,7 @@ public class ServerConnection {
 			socket = new Socket(addr, port);
 			buffer = new byte[0];
 			while (!outQueue.isEmpty())
-				forward(outQueue.poll());
+				send(outQueue.poll());
 			if (!connected && callback != null)
 				callback.onConnected();
 			connected = true;

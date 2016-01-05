@@ -1,5 +1,6 @@
 package com.projectswg;
 
+import java.net.BindException;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
@@ -38,13 +39,11 @@ public class ClientSender {
 	private int connectionId;
 	private int port;
 	private int loginPort;
-	private int zonePort;
 	private boolean zone;
 	
-	public ClientSender(NetInterceptor interceptor, int loginPort, int zonePort) {
+	public ClientSender(NetInterceptor interceptor, int loginPort) {
 		this.interceptor = interceptor;
 		this.loginPort = loginPort;
-		this.zonePort = zonePort;
 		sentPackets = new LinkedList<>();
 		inboundQueue = new LinkedList<>();
 		connectionId = -1;
@@ -53,25 +52,29 @@ public class ClientSender {
 		zone = false;
 	}
 	
-	public void start() {
+	public boolean start() {
+		safeCloseServers();
 		try {
 			loginServer = new UDPServer(loginPort, 496);
-			zoneServer = new UDPServer(zonePort, 496);
+			zoneServer = new UDPServer(0, 496);
+			executor = Executors.newFixedThreadPool(2);
+			executor.submit(() -> outboundRunnable());
+			executor.submit(() -> inboundRunnable());
+			return true;
+		} catch (BindException e) {
+			System.err.println("Failed to bind UDP servers! Login Port: " + loginPort);
 		} catch (SocketException e) {
 			e.printStackTrace();
-			loginServer = null;
-			zoneServer = null;
 		}
-		executor = Executors.newFixedThreadPool(2);
-		executor.submit(() -> outboundRunnable());
-		executor.submit(() -> inboundRunnable());
+		safeCloseServers();
+		executor = null;
+		return false;
 	}
 	
 	public void stop() {
 		disconnect(DisconnectReason.APPLICATION);
 		executor.shutdownNow();
-		loginServer.close();
-		zoneServer.close();
+		safeCloseServers();
 	}
 	
 	public void setClientReceiver(ClientReceiver receiver) {
@@ -90,7 +93,19 @@ public class ClientSender {
 		this.callback = callback;
 	}
 	
+	public void setLoginPort(int loginPort) {
+		this.loginPort = loginPort;
+	}
+	
+	public int getLoginPort() {
+		if (loginServer == null)
+			return -1;
+		return loginServer.getPort();
+	}
+	
 	public int getZonePort() {
+		if (zoneServer == null)
+			return -1;
 		return zoneServer.getPort();
 	}
 	
@@ -209,9 +224,14 @@ public class ClientSender {
 		byte [] data;
 		Queue<byte []> outbound = new ArrayBlockingQueue<>(8, true);
 		int size = 0;
+		boolean lastWasEmpty = false;
 		while (true) {
 			size = dataHeaderSize;
 			synchronized (inboundQueue) {
+				if (inboundQueue.isEmpty() && lastWasEmpty) {
+					try { inboundQueue.wait(); } catch (InterruptedException e) { break; }
+				}
+				lastWasEmpty = inboundQueue.isEmpty();
 				while (!inboundQueue.isEmpty()) {
 					data = interceptor.interceptServer(inboundQueue.poll());
 					if ((size + getPacketLength(data) >= 496 && !outbound.isEmpty()) || outbound.size() == 8) {
@@ -259,6 +279,17 @@ public class ClientSender {
 					send(frag);
 				}
 			}
+		}
+	}
+	
+	private void safeCloseServers() {
+		if (loginServer != null) {
+			loginServer.close();
+			loginServer = null;
+		}
+		if (zoneServer != null) {
+			zoneServer.close();
+			zoneServer = null;
 		}
 	}
 	

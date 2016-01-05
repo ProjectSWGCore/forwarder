@@ -17,18 +17,19 @@ public class ClientConnection {
 	private NetInterceptor interceptor;
 	private boolean connected;
 	
-	public ClientConnection(int loginPort, int zonePort) {
+	public ClientConnection(int loginPort) {
 		callback = null;
 		connected = false;
 		interceptor = new NetInterceptor();
-		sender = new ClientSender(interceptor, loginPort, zonePort);
+		sender = new ClientSender(interceptor, loginPort);
 		receiver = new ClientReceiver(interceptor);
 		sender.setClientReceiver(receiver);
 		receiver.setClientSender(sender);
 	}
 	
-	public void start() {
-		sender.start();
+	public boolean start() {
+		if (!sender.start())
+			return false;
 		receiver.start();
 		interceptor.setPort(sender.getZonePort());
 		sender.setLoginCallback((packet) -> receiver.onPacket(false, packet));
@@ -43,6 +44,7 @@ public class ClientConnection {
 		sender.setSenderCallback((zone, data) -> onUdpSent(zone, data));
 		pinger = Executors.newSingleThreadScheduledExecutor();
 		pinger.scheduleAtFixedRate(()->ping(), 0, 1000, TimeUnit.MILLISECONDS);
+		return true;
 	}
 	
 	public void stop() {
@@ -57,8 +59,20 @@ public class ClientConnection {
 		this.callback = callback;
 	}
 	
+	public void setLoginPort(int loginPort) {
+		sender.setLoginPort(loginPort);
+	}
+	
 	public void send(byte [] data) {
 		sender.send(data);
+	}
+	
+	public int getLoginPort() {
+		return sender.getLoginPort();
+	}
+	
+	public int getZonePort() {
+		return sender.getZonePort();
 	}
 	
 	private void onPacket(byte [] data) {

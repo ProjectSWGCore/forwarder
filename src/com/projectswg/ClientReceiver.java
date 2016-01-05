@@ -210,11 +210,10 @@ public class ClientReceiver {
 	}
 	
 	private void onOutOfOrder(OutOfOrder ooo) {
-		System.out.println("OOO " + ooo.getSequence());
+		
 	}
 	
 	private void onAcknowledge(Acknowledge ack) {
-		System.out.println("ACK " + ack.getSequence());
 		sender.onAcknowledge(ack.getSequence());
 	}
 	

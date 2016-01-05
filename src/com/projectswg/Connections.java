@@ -17,22 +17,33 @@ public class Connections {
 	private ConnectionCallback callback;
 	private InetAddress addr;
 	private int port;
+	private int loginPort;
 	
 	public Connections() {
-		server = new ServerConnection();
-		client = new ClientConnection(44453, 44463);
+		this(InetAddress.getLoopbackAddress(), 44463, 44453);
+	}
+	
+	public Connections(InetAddress remoteAddr, int remotePort, int loginPort) {
+		this.addr = remoteAddr;
+		this.port = remotePort;
+		this.loginPort = loginPort;
+		server = new ServerConnection(remoteAddr, remotePort);
+		client = new ClientConnection(loginPort);
 		tcpRecv = new AtomicLong(0);
 		tcpSent = new AtomicLong(0);
 		udpRecv = new AtomicLong(0);
 		udpSent = new AtomicLong(0);
-		addr = ServerConnection.DEFAULT_ADDR;
-		port = ServerConnection.DEFAULT_PORT;
 		callback = null;
 		setCallbacks();
 	}
 	
 	public void initialize() {
-		client.start();
+		int attempts = 0;
+		while (!client.start() && attempts < 5) {
+			loginPort++;
+			client.setLoginPort(loginPort);
+			attempts++;
+		}
 	}
 	
 	public void terminate() {
@@ -52,12 +63,20 @@ public class Connections {
 		initialize();
 	}
 	
-	public InetAddress getAddress() {
+	public InetAddress getRemoteAddress() {
 		return addr;
 	}
 	
-	public int getPort() {
+	public int getRemotePort() {
 		return port;
+	}
+	
+	public int getLoginPort() {
+		return client.getLoginPort();
+	}
+	
+	public int getZonePort() {
+		return client.getZonePort();
 	}
 	
 	public long getTcpRecv() {
@@ -122,7 +141,7 @@ public class Connections {
 	
 	private void onDataSentTcp(byte [] data) {
 		tcpSent.addAndGet(data.length);
-		server.forward(data);
+		server.send(data);
 		if (callback != null)
 			callback.onDataSentTcp(data);
 	}

@@ -31,6 +31,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 	private final Button serverSetButton;
 	private final Text serverConnectionText;
 	private final Text clientConnectionText;
+	private final Text serverConnectionPort;
 	private final Text serverRxText;
 	private final Text serverTxText;
 	private final Text clientRxText;
@@ -42,11 +43,12 @@ public class Forwarder extends Application implements ConnectionCallback {
 	
 	public Forwarder() {
 		connections = new Connections();
-		serverIpField = new TextField(ServerConnection.DEFAULT_ADDR.getHostAddress());
-		serverPortField = new TextField(Integer.toString(ServerConnection.DEFAULT_PORT));
+		serverIpField = new TextField(connections.getRemoteAddress().getHostAddress());
+		serverPortField = new TextField(Integer.toString(connections.getRemotePort()));
 		serverSetButton = new Button("Set");
 		serverConnectionText = new Text(getConnectionStatus(false));
 		clientConnectionText = new Text(getConnectionStatus(false));
+		serverConnectionPort = new Text(Integer.toString(connections.getLoginPort()));
 		serverRxText = new Text(getByteName(connections.getTcpRecv()));
 		serverTxText = new Text(getByteName(connections.getTcpSent()));
 		clientRxText = new Text(getByteName(connections.getUdpRecv()));
@@ -136,7 +138,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 		try {
 			InetAddress addr = InetAddress.getByName(serverIpField.getText());
 			int port = Integer.parseInt(serverPortField.getText());
-			if (!addr.equals(connections.getAddress()) || port != connections.getPort())
+			if (!addr.equals(connections.getRemoteAddress()) || port != connections.getRemotePort())
 				serverSetButton.setDisable(false);
 			else
 				serverSetButton.setDisable(true);
@@ -148,6 +150,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 	@Override
 	public void start(Stage primaryStage) throws Exception {
 		connections.initialize();
+		serverConnectionPort.setText(Integer.toString(connections.getLoginPort()));
 		GridPane root = new GridPane();
 		for (int i = 0; i < 4; i++) {
 			ColumnConstraints cc = new ColumnConstraints();
@@ -158,7 +161,8 @@ public class Forwarder extends Application implements ConnectionCallback {
 		root.add(serverPortField,		2, 0, 1, 1);
 		root.add(serverSetButton,		3, 0, 1, 1);
 		root.add(new Text("Server Connection:"), 0, 1, 2, 1);
-		root.add(serverConnectionText,	2, 1, 2, 1);
+		root.add(serverConnectionText,	2, 1, 1, 1);
+		root.add(serverConnectionPort,	3, 1, 1, 1);
 		root.add(new Text("Client Connection:"), 0, 2, 2, 1);
 		root.add(clientConnectionText,	2, 2, 2, 1);
 		root.add(new Text("Sent"),		1, 3, 1, 1);
@@ -183,6 +187,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 			public void handle(WindowEvent we) {
 				connections.terminate();
 				primaryStage.close();
+				System.exit(0);
 			}
 		});
 	}
