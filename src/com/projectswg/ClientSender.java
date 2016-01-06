@@ -199,7 +199,7 @@ public class ClientSender {
 		while (true) {
 			time = receiver.getTimeSinceLastPacket();
 			timeSinceBurst = (System.nanoTime() - lastBurst) / 1E6;
-			if (time <= timeSinceBurst || (time >= 100 && timeSinceBurst >= 300)) {
+			if (time <= timeSinceBurst || (time >= 100 && timeSinceBurst >= 1000)) {
 				synchronized (sentPackets) {
 					int sent = 0;
 					for (SequencedOutbound packet : sentPackets) {
