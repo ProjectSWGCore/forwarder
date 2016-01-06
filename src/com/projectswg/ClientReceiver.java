@@ -199,6 +199,8 @@ public class ClientReceiver {
 	
 	private void onDataChannel(DataChannelA dataChannel) {
 		if (dataChannel.getSequence() != rxSequence+1) {
+			if (dataChannel.getSequence() > rxSequence)
+				sender.send(new OutOfOrder(dataChannel.getSequence()));
 			System.err.println("Invalid Sequence! Expected: " + (rxSequence+1) + "  Actual: " + dataChannel.getSequence());
 			return;
 		}
