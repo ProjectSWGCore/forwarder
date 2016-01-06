@@ -148,7 +148,10 @@ public class ServerConnection {
 				process(buffer, n);
 		} catch (IOException e) {
 			if (connected) {
-				e.printStackTrace();
+				if (e.getMessage().equals("Connection reset"))
+					System.err.println("Connection reset");
+				else
+					e.printStackTrace();
 				disconnect();
 			}
 		} catch (Exception e) {
