@@ -116,6 +116,7 @@ public class Connections {
 	}
 	
 	private void onServerDisconnected() {
+		client.stop();
 		if (callback != null)
 			callback.onServerDisconnected();
 	}

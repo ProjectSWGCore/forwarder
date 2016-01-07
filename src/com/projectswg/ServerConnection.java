@@ -127,15 +127,17 @@ public class ServerConnection {
 		ByteBuffer buffer = ByteBuffer.allocateDirect(4*1024);
 		try {
 			while (running) {
-				if (!connected) {
+				if (!connected)
 					loopDisconnected();
-				} else {
+				else
 					read(buffer);
-				}
 			}
+		} catch (InterruptedException e) {
+			
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+		running = false;
 	}
 	
 	private boolean loopDisconnected() throws InterruptedException {
