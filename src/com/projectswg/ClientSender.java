@@ -34,7 +34,6 @@ public class ClientSender {
 	private Queue<byte []> inboundQueue;
 	private ExecutorService executor;
 	private ClientSenderCallback callback;
-	private ClientReceiver receiver;
 	private short txSequence;
 	private int connectionId;
 	private int port;
@@ -75,10 +74,6 @@ public class ClientSender {
 		disconnect(DisconnectReason.APPLICATION);
 		executor.shutdownNow();
 		safeCloseServers();
-	}
-	
-	public void setClientReceiver(ClientReceiver receiver) {
-		this.receiver = receiver;
 	}
 	
 	public void setLoginCallback(UDPCallback callback) {
@@ -149,12 +144,6 @@ public class ClientSender {
 				} else
 					break;
 			}
-//			while (!sentPackets.isEmpty()) {
-//				if (sentPackets.peek().getSequence() <= sequence)
-//					sentPackets.poll();
-//				else
-//					break;
-//			}
 		}
 	}
 	
@@ -213,25 +202,7 @@ public class ClientSender {
 	}
 	
 	private void outboundRunnable() {
-//		double time = 0;
-//		long lastBurst = 0;
-//		double timeSinceBurst = 0;
 		while (true) {
-//			time = receiver.getTimeSinceLastPacket();
-//			timeSinceBurst = (System.nanoTime() - lastBurst) / 1E6;
-			// Slow: 12  Med: 8  Fast: 4
-//			if (time <= timeSinceBurst || (time >= 100 && timeSinceBurst >= 1000)) { // Slow: XXX  Med: 1000  Fast: 500
-//				synchronized (sentPackets) {
-//					int sent = 0;
-//					for (SequencedOutbound packet : sentPackets) {
-//						sendRaw(port, addr, packet.getData());
-//						Thread.yield();
-//						if (++sent >= 500) // Slow: XXX  Med: 500  Fast: infinity
-//							break;
-//					}
-//				}
-//				lastBurst = System.nanoTime();
-//			}
 			synchronized (sentPackets) {
 				for (SequencedOutbound packet : sentPackets) {
 					if (packet.getTimeSinceSent() >= 2000) {

@@ -23,7 +23,6 @@ public class ClientConnection {
 		interceptor = new NetInterceptor();
 		sender = new ClientSender(interceptor, loginPort);
 		receiver = new ClientReceiver(interceptor);
-		sender.setClientReceiver(receiver);
 		receiver.setClientSender(sender);
 	}
 	
