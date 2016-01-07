@@ -94,8 +94,6 @@ public class Fragmented extends Packet implements SequencedPacket {
 	public boolean equals(Object o) {
 		if (o instanceof Fragmented)
 			return ((Fragmented) o).sequence == sequence;
-		if (o instanceof Number)
-			return ((Number) o).shortValue() == sequence;
 		return false;
 	}
 	

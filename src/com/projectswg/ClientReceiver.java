@@ -76,7 +76,7 @@ public class ClientReceiver {
 		if (packet.getData().length < 2)
 			return;
 		if (zone && packet.getData().length == 4) { // Ping
-			sender.sendRaw(packet.getPort(), packet.getAddress(), packet.getData());
+			sender.sendRaw(packet.getPort(), packet.getData());
 			lastPacket.set(System.nanoTime());
 			if (callback != null)
 				callback.onUdpRecv(zone, packet.getData());
@@ -97,7 +97,7 @@ public class ClientReceiver {
 			if (packet.getPort() != port || port == 0)
 				return;
 			lastPacket.set(System.nanoTime());
-			executor.submit(() -> {
+			executor.execute(() -> {
 				ByteBuffer decoded = ByteBuffer.wrap(Encryption.decode(data.array(), 0)).order(ByteOrder.BIG_ENDIAN);
 				process(decoded);
 				if (callback != null)
@@ -213,6 +213,7 @@ public class ClientReceiver {
 	
 	private void onOutOfOrder(OutOfOrder ooo) {
 		System.out.println("OOO " + ooo.getSequence());
+		sender.onOutOfOrder(ooo.getSequence());
 	}
 	
 	private void onAcknowledge(Acknowledge ack) {

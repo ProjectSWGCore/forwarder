@@ -1,23 +1,31 @@
 package com.projectswg;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetAddress;
-import java.net.Socket;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.SocketChannel;
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import com.projectswg.networking.encryption.Compression;
 
 public class ServerConnection {
 	
+	private static final int DEFAULT_BUFFER = 4096;
+	
 	private final Object bufferMutex;
+	private final Object socketMutex;
+	private final ExecutorService processor;
+	private final ExecutorService callbackExecutor;
 	private final Queue<byte []> outQueue;
-	private Socket socket;
+	private ByteBuffer buffer;
+	private long lastBufferSizeModification;
+	private SocketChannel socket;
 	private boolean connected;
-	private byte [] buffer;
 	private ServerCallback callback;
 	private InetAddress addr;
 	private int port;
@@ -27,15 +35,19 @@ public class ServerConnection {
 	
 	public ServerConnection(InetAddress addr, int port) {
 		this.bufferMutex = new Object();
+		this.socketMutex = new Object();
+		this.processor = Executors.newSingleThreadExecutor();
+		this.callbackExecutor = Executors.newSingleThreadExecutor();
+		this.outQueue = new LinkedList<>();
+		this.buffer = ByteBuffer.allocate(DEFAULT_BUFFER).order(ByteOrder.LITTLE_ENDIAN);
+		lastBufferSizeModification = System.nanoTime();
 		this.addr = addr;
 		this.port = port;
-		outQueue = new LinkedList<>();
 		socket = null;
 		thread = null;
 		callback = null;
 		running = false;
 		connected = false;
-		buffer = new byte[0];
 	}
 	
 	public void start() {
@@ -63,7 +75,7 @@ public class ServerConnection {
 	}
 	
 	public boolean send(byte [] raw) {
-		if (socket == null) {
+		if (!connected) {
 			outQueue.add(raw);
 			return false;
 		}
@@ -81,8 +93,9 @@ public class ServerConnection {
 		data.putShort((short) raw.length);
 		data.putShort((short) decompressedLength);
 		data.put(raw);
+		data.flip();
 		try {
-			socket.getOutputStream().write(data.array());
+			socket.write(data);
 			return true;
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -90,62 +103,72 @@ public class ServerConnection {
 		}
 	}
 	
-	private boolean processPacket(ByteBuffer data) {
-		byte bitmask = data.get();
-		short messageLength = data.getShort();
-		short decompressedLength = data.getShort();
-		if (data.remaining() < messageLength) {
-			data.position(data.position() - 5);
+	private boolean processPacket() {
+		byte bitmask = buffer.get();
+		short messageLength = buffer.getShort();
+		short decompressedLength = buffer.getShort();
+		if (buffer.remaining() < messageLength) {
+			buffer.position(buffer.position() - 5);
 			return false;
 		}
 		byte [] message = new byte[messageLength];
-		data.get(message);
+		buffer.get(message);
+		final byte [] packet;
 		if ((bitmask & 1) != 0) // Compressed
-			message = Compression.decompress(message, decompressedLength);
+			packet = Compression.decompress(message, decompressedLength);
+		else
+			packet = message;
 		if (callback != null)
-			callback.onData(message);
+			callbackExecutor.execute(() -> callback.onData(packet));
 		return true;
 	}
 	
 	private void run() {
-		InputStream input = null;
-		if (!connected) {
-			if (connect()) {
-				try {
-					input = socket.getInputStream();
-				} catch (IOException e) {
-					e.printStackTrace();
+		ByteBuffer buffer = ByteBuffer.allocateDirect(4*1024);
+		try {
+			while (running) {
+				if (!connected) {
+					loopDisconnected();
+				} else {
+					read(buffer);
 				}
 			}
-		}
-		byte [] buffer = new byte[2*1024];
-		while (running) {
-			if (!connected) {
-				try {
-					Thread.sleep(1000);
-				} catch (InterruptedException e) {
-					break;
-				}
-				if (connect()) {
-					try {
-						input = socket.getInputStream();
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-				}
-			} else {
-				read(input, buffer);
-			}
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 	
-	private void read(InputStream input, byte [] buffer) {
+	private boolean loopDisconnected() throws InterruptedException {
+		boolean connecting = false;
+		synchronized (socketMutex) {
+			if (socket == null) {
+				connecting = connect();
+			} else {
+				connected = socket.isConnected();
+				connecting = true;
+			}
+		}
+		if (connected) {
+			while (!outQueue.isEmpty())
+				send(outQueue.poll());
+			if (callback != null)
+				callbackExecutor.execute(() -> callback.onConnected());
+		} else
+			Thread.sleep(connecting ? 5 : 1000);
+		return connected;
+	}
+	
+	private void read(ByteBuffer data) {
 		try {
-			int n = input.read(buffer);
-			if (n == -1)
+			data.position(0);
+			data.limit(data.capacity());
+			int n = socket.read(data);
+			if (n < 0) {
 				disconnect();
-			else
-				process(buffer, n);
+			} else if (n > 0) {
+				data.flip();
+				addToBuffer(data);
+			}
 		} catch (IOException e) {
 			if (connected) {
 				if (e.getMessage().equals("Connection reset"))
@@ -161,59 +184,95 @@ public class ServerConnection {
 		}
 	}
 	
-	private void process(byte [] buffer, int length) {
-		if (length <= 0)
-			return;
-		ByteBuffer data;
+	private void addToBuffer(ByteBuffer data) {
 		synchronized (bufferMutex) {
-			data = ByteBuffer.allocate(length+this.buffer.length).order(ByteOrder.LITTLE_ENDIAN);
-			data.put(this.buffer);
+			if (data.remaining() > buffer.remaining()) { // Increase size
+				int nCapacity = buffer.capacity() * 2;
+				while (nCapacity < buffer.position()+data.remaining())
+					nCapacity *= 2;
+				System.out.println("Expanding buffer to " + nCapacity);
+				ByteBuffer bb = ByteBuffer.allocate(nCapacity).order(ByteOrder.LITTLE_ENDIAN);
+				buffer.flip();
+				bb.put(buffer);
+				bb.put(data);
+				buffer = bb;
+				lastBufferSizeModification = System.nanoTime();
+			} else {
+				buffer.put(data);
+				if (buffer.position() < buffer.capacity()/4 && data.limit() != data.capacity() && (System.nanoTime()-lastBufferSizeModification) >= 1E9)
+					shrinkBuffer();
+			}
 		}
-		data.put(buffer, 0, length);
-		data.flip();
-		while (data.remaining() >= 5) {
-			if (!processPacket(data))
-				break;
-		}
+		processor.execute(() -> process());
+	}
+	
+	private void shrinkBuffer() {
 		synchronized (bufferMutex) {
-			byte [] tmp = new byte[data.remaining()];
-			data.get(tmp);
-			this.buffer = tmp;
+			int nCapacity = DEFAULT_BUFFER;
+			while (nCapacity < buffer.position())
+				nCapacity *= 2;
+			if (nCapacity >= buffer.capacity())
+				return;
+			System.out.println("Shrinking buffer to " + nCapacity);
+			ByteBuffer bb = ByteBuffer.allocate(nCapacity).order(ByteOrder.LITTLE_ENDIAN);
+			buffer.flip();
+			bb.put(buffer);
+			buffer = bb;
+			lastBufferSizeModification = System.nanoTime();
+		}
+	}
+	
+	private void process() {
+		synchronized (bufferMutex) {
+			buffer.flip();
+			while (buffer.remaining() >= 5) {
+				if (!processPacket())
+					break;
+			}
+			buffer.compact();
+		}
+	}
+	
+	private void reset() {
+		synchronized (bufferMutex) {
+			buffer = ByteBuffer.allocate(DEFAULT_BUFFER).order(ByteOrder.LITTLE_ENDIAN);
+			lastBufferSizeModification = System.nanoTime();
 		}
 	}
 	
 	private boolean connect() {
-		try {
-			if (socket != null)
+		synchronized (socketMutex) {
+			try {
+				if (socket != null)
+					disconnect();
+				socket = SocketChannel.open(new InetSocketAddress(addr, port));
+				System.out.println("Connected");
+				reset();
+				return true;
+			} catch (IOException e) {
 				disconnect();
-			socket = new Socket(addr, port);
-			buffer = new byte[0];
-			while (!outQueue.isEmpty())
-				send(outQueue.poll());
-			if (!connected && callback != null)
-				callback.onConnected();
-			connected = true;
-			return true;
-		} catch (IOException e) {
-			connected = false;
-			return false;
+				return false;
+			}
 		}
 	}
 	
 	private boolean disconnect() {
-		if (connected && callback != null)
-			callback.onDisconnected();
-		connected = false;
-		if (socket == null)
-			return true;
-		try {
-			socket.close();
-			socket = null;
-			buffer = new byte[0];
-			return true;
-		} catch (IOException e) {
-			e.printStackTrace();
-			return false;
+		synchronized (socketMutex) {
+			if (connected && callback != null)
+				callbackExecutor.execute(() -> callback.onDisconnected());
+			connected = false;
+			if (socket == null)
+				return true;
+			try {
+				System.out.println("Disconnected");
+				socket.close();
+				socket = null;
+				reset();
+				return true;
+			} catch (IOException e) {
+				e.printStackTrace();
+				return false;
+			}
 		}
 	}
 	

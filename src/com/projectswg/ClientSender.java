@@ -58,8 +58,8 @@ public class ClientSender {
 			loginServer = new UDPServer(loginPort, 496);
 			zoneServer = new UDPServer(0, 496);
 			executor = Executors.newFixedThreadPool(2);
-			executor.submit(() -> outboundRunnable());
-			executor.submit(() -> inboundRunnable());
+			executor.execute(() -> outboundRunnable());
+			executor.execute(() -> inboundRunnable());
 			return true;
 		} catch (BindException e) {
 			System.err.println("Failed to bind UDP servers! Login Port: " + loginPort);
@@ -138,6 +138,26 @@ public class ClientSender {
 		txSequence = 0;
 	}
 	
+	public void onOutOfOrder(short sequence) {
+		synchronized (sentPackets) {
+			for (SequencedOutbound packet : sentPackets) {
+				if (packet.getSequence() <= sequence) {
+					if (packet.getTimeSinceSent() >= 100) {
+						sendRaw(packet.getData());
+						packet.updateTimeSinceSent();
+					}
+				} else
+					break;
+			}
+//			while (!sentPackets.isEmpty()) {
+//				if (sentPackets.peek().getSequence() <= sequence)
+//					sentPackets.poll();
+//				else
+//					break;
+//			}
+		}
+	}
+	
 	public void onAcknowledge(short sequence) {
 		synchronized (sentPackets) {
 			while (!sentPackets.isEmpty()) {
@@ -163,14 +183,14 @@ public class ClientSender {
 	}
 	
 	public void sendRaw(byte [] data) {
-		sendRaw(port, ADDR, data);
+		sendRaw(port, data);
 	}
 	
-	public void sendRaw(int port, InetAddress addr, byte [] data) {
+	public void sendRaw(int port, byte [] data) {
 		if (zone)
-			zoneServer.send(port, addr, data);
+			zoneServer.send(port, ADDR, data);
 		else
-			loginServer.send(port, addr, data);
+			loginServer.send(port, ADDR, data);
 		if (callback != null)
 			callback.onUdpSent(zone, data);
 	}
@@ -185,34 +205,44 @@ public class ClientSender {
 			synchronized (sentPackets) {
 				sentPackets.add(new SequencedOutbound(((SequencedPacket) packet).getSequence(), data));
 				sentPackets.notifyAll();
+				sendRaw(data);
 			}
 		} else {
-			sendRaw(port, InetAddress.getLoopbackAddress(), data);
+			sendRaw(data);
 		}
 	}
 	
 	private void outboundRunnable() {
-		final InetAddress addr = InetAddress.getLoopbackAddress();
-		double time = 0;
-		long lastBurst = 0;
-		double timeSinceBurst = 0;
+//		double time = 0;
+//		long lastBurst = 0;
+//		double timeSinceBurst = 0;
 		while (true) {
-			time = receiver.getTimeSinceLastPacket();
-			timeSinceBurst = (System.nanoTime() - lastBurst) / 1E6;
-			if (time <= timeSinceBurst || (time >= 100 && timeSinceBurst >= 1000)) {
-				synchronized (sentPackets) {
-					int sent = 0;
-					for (SequencedOutbound packet : sentPackets) {
-						sendRaw(port, addr, packet.getData());
-						Thread.yield();
-						if (++sent >= 500)
-							break;
+//			time = receiver.getTimeSinceLastPacket();
+//			timeSinceBurst = (System.nanoTime() - lastBurst) / 1E6;
+			// Slow: 12  Med: 8  Fast: 4
+//			if (time <= timeSinceBurst || (time >= 100 && timeSinceBurst >= 1000)) { // Slow: XXX  Med: 1000  Fast: 500
+//				synchronized (sentPackets) {
+//					int sent = 0;
+//					for (SequencedOutbound packet : sentPackets) {
+//						sendRaw(port, addr, packet.getData());
+//						Thread.yield();
+//						if (++sent >= 500) // Slow: XXX  Med: 500  Fast: infinity
+//							break;
+//					}
+//				}
+//				lastBurst = System.nanoTime();
+//			}
+			synchronized (sentPackets) {
+				for (SequencedOutbound packet : sentPackets) {
+					if (packet.getTimeSinceSent() >= 2000) {
+						sendRaw(port, packet.getData());
+						packet.updateTimeSinceSent();
 					}
+					Thread.yield();
 				}
-				lastBurst = System.nanoTime();
 			}
 			try {
-				Thread.sleep(25);
+				Thread.sleep(100);
 			} catch (InterruptedException e) {
 				break;
 			}
@@ -300,15 +330,22 @@ public class ClientSender {
 	private static class SequencedOutbound implements SequencedPacket {
 		
 		private short sequence;
+		private long sent;
 		private byte [] data;
 		
 		public SequencedOutbound(short sequence, byte [] data) {
 			this.sequence = sequence;
+			this.sent = System.nanoTime();
 			this.data = data;
 		}
 		
 		public short getSequence() { return sequence; }
+		public double getTimeSinceSent() { return (System.nanoTime()-sent)/1E6; }
 		public byte [] getData() { return data; }
+		
+		public void updateTimeSinceSent() {
+			sent = System.nanoTime();
+		}
 		
 		public int compareTo(SequencedPacket p) {
 			if (sequence < p.getSequence())
