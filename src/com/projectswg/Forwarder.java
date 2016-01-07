@@ -2,6 +2,8 @@ package com.projectswg;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -25,6 +27,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 	
 	private static final String [] DATA_NAMES = new String[]{"B", "KB", "MB", "GB", "TB"};
 	
+	private final ExecutorService executor;
 	private final Connections connections;
 	private final TextField serverIpField;
 	private final TextField serverPortField;
@@ -42,6 +45,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 	}
 	
 	public Forwarder() {
+		executor = Executors.newSingleThreadExecutor();
 		connections = new Connections();
 		serverIpField = new TextField(connections.getRemoteAddress().getHostAddress());
 		serverPortField = new TextField(Integer.toString(connections.getRemotePort()));
@@ -122,29 +126,33 @@ public class Forwarder extends Application implements ConnectionCallback {
 	}
 	
 	private void updateServerIp() {
-		try {
-			InetAddress addr = InetAddress.getByName(serverIpField.getText());
-			int port = Integer.parseInt(serverPortField.getText());
-			connections.setRemote(addr, port);
-			updateServerButton();
-		} catch (UnknownHostException e) {
-			System.err.println("Unknown IP: " + serverIpField.getText());
-		} catch (NumberFormatException e) {
-			System.err.println("Invalid Port: " + serverPortField.getText());
-		}
+		executor.execute(() -> {
+			try {
+				InetAddress addr = InetAddress.getByName(serverIpField.getText());
+				int port = Integer.parseInt(serverPortField.getText());
+				connections.setRemote(addr, port);
+			} catch (UnknownHostException e) {
+				System.err.println("Unknown IP: " + serverIpField.getText());
+			} catch (NumberFormatException e) {
+				System.err.println("Invalid Port: " + serverPortField.getText());
+			}
+		});
+		updateServerButton();
 	}
 	
 	private void updateServerButton() {
-		try {
-			InetAddress addr = InetAddress.getByName(serverIpField.getText());
-			int port = Integer.parseInt(serverPortField.getText());
-			if (!addr.equals(connections.getRemoteAddress()) || port != connections.getRemotePort())
-				serverSetButton.setDisable(false);
-			else
+		executor.execute(() -> {
+			try {
+				InetAddress addr = InetAddress.getByName(serverIpField.getText());
+				int port = Integer.parseInt(serverPortField.getText());
+				if (!addr.equals(connections.getRemoteAddress()) || port != connections.getRemotePort())
+					Platform.runLater(() -> serverSetButton.setDisable(false));
+				else
+					Platform.runLater(() -> serverSetButton.setDisable(true));
+			} catch (UnknownHostException | NumberFormatException e) {
 				serverSetButton.setDisable(true);
-		} catch (UnknownHostException | NumberFormatException e) {
-			serverSetButton.setDisable(true);
-		}
+			}
+		});
 	}
 	
 	@Override
