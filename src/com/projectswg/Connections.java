@@ -116,7 +116,7 @@ public class Connections {
 	}
 	
 	private void onServerDisconnected() {
-		client.stop();
+		terminate();
 		if (callback != null)
 			callback.onServerDisconnected();
 	}
@@ -128,9 +128,10 @@ public class Connections {
 	}
 	
 	private void onClientDisconnected() {
-		server.stop();
+		terminate();
 		if (callback != null)
 			callback.onClientDisconnected();
+		client.start();
 	}
 	
 	private void onDataRecvTcp(byte [] data) {

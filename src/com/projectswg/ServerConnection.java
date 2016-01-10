@@ -19,9 +19,9 @@ public class ServerConnection {
 	
 	private final Object bufferMutex;
 	private final Object socketMutex;
-	private final ExecutorService processor;
-	private final ExecutorService callbackExecutor;
 	private final Queue<byte []> outQueue;
+	private ExecutorService processor;
+	private ExecutorService callbackExecutor;
 	private ByteBuffer buffer;
 	private long lastBufferSizeModification;
 	private SocketChannel socket;
@@ -36,8 +36,6 @@ public class ServerConnection {
 	public ServerConnection(InetAddress addr, int port) {
 		this.bufferMutex = new Object();
 		this.socketMutex = new Object();
-		this.processor = Executors.newSingleThreadExecutor();
-		this.callbackExecutor = Executors.newSingleThreadExecutor();
 		this.outQueue = new LinkedList<>();
 		this.buffer = ByteBuffer.allocate(DEFAULT_BUFFER).order(ByteOrder.LITTLE_ENDIAN);
 		lastBufferSizeModification = System.nanoTime();
@@ -52,6 +50,8 @@ public class ServerConnection {
 	
 	public void start() {
 		stop();
+		processor = Executors.newSingleThreadExecutor();
+		callbackExecutor = Executors.newSingleThreadExecutor();
 		running = true;
 		thread = new Thread(() -> run());
 		thread.start();
@@ -63,6 +63,12 @@ public class ServerConnection {
 		if (thread != null)
 			thread.interrupt();
 		thread = null;
+		if (processor != null)
+			processor.shutdownNow();
+		if (callbackExecutor != null)
+			callbackExecutor.shutdownNow();
+		processor = null;
+		callbackExecutor = null;
 	}
 	
 	public void setRemoteAddress(InetAddress addr, int port) {
@@ -192,7 +198,6 @@ public class ServerConnection {
 				int nCapacity = buffer.capacity() * 2;
 				while (nCapacity < buffer.position()+data.remaining())
 					nCapacity *= 2;
-				System.out.println("Expanding buffer to " + nCapacity);
 				ByteBuffer bb = ByteBuffer.allocate(nCapacity).order(ByteOrder.LITTLE_ENDIAN);
 				buffer.flip();
 				bb.put(buffer);
@@ -215,7 +220,6 @@ public class ServerConnection {
 				nCapacity *= 2;
 			if (nCapacity >= buffer.capacity())
 				return;
-			System.out.println("Shrinking buffer to " + nCapacity);
 			ByteBuffer bb = ByteBuffer.allocate(nCapacity).order(ByteOrder.LITTLE_ENDIAN);
 			buffer.flip();
 			bb.put(buffer);
@@ -248,7 +252,6 @@ public class ServerConnection {
 				if (socket != null)
 					disconnect();
 				socket = SocketChannel.open(new InetSocketAddress(addr, port));
-				System.out.println("Connected");
 				reset();
 				return true;
 			} catch (IOException e) {
@@ -266,7 +269,6 @@ public class ServerConnection {
 			if (socket == null)
 				return true;
 			try {
-				System.out.println("Disconnected");
 				socket.close();
 				socket = null;
 				reset();

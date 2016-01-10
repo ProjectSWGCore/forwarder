@@ -50,8 +50,7 @@ public class ClientConnection {
 		pinger.shutdownNow();
 		sender.stop();
 		receiver.stop();
-		if (callback != null)
-			callback.onDisconnected();
+		onDisconnected();
 	}
 	
 	public void setCallback(ClientCallback callback) {
@@ -90,16 +89,18 @@ public class ClientConnection {
 	}
 	
 	private void onDisconnected() {
+		boolean prev = connected;
 		connected = false;
-		if (callback != null)
+		if (callback != null && prev)
 			callback.onDisconnected();
 		sender.reset();
 		receiver.reset();
 	}
 	
 	private void onConnected() {
+		boolean prev = connected;
 		connected = true;
-		if (callback != null)
+		if (callback != null && !prev)
 			callback.onConnected();
 		sender.reset();
 		receiver.reset();

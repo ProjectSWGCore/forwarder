@@ -176,7 +176,6 @@ public class ClientReceiver {
 	private void onDisconnect(Disconnect disconnect) {
 		if (callback != null)
 			callback.onDisconnected();
-		System.out.println("Disconnected");
 		setConnectionState(ConnectionState.DISCONNECTED);
 		zone = false;
 	}
@@ -212,7 +211,6 @@ public class ClientReceiver {
 	}
 	
 	private void onOutOfOrder(OutOfOrder ooo) {
-		System.out.println("OOO " + ooo.getSequence());
 		sender.onOutOfOrder(ooo.getSequence());
 	}
 	

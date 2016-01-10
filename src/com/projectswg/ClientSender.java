@@ -56,6 +56,7 @@ public class ClientSender {
 		try {
 			loginServer = new UDPServer(loginPort, 496);
 			zoneServer = new UDPServer(0, 496);
+			loginPort = loginServer.getPort();
 			executor = Executors.newFixedThreadPool(2);
 			executor.execute(() -> outboundRunnable());
 			executor.execute(() -> inboundRunnable());
@@ -93,9 +94,7 @@ public class ClientSender {
 	}
 	
 	public int getLoginPort() {
-		if (loginServer == null)
-			return -1;
-		return loginServer.getPort();
+		return loginPort;
 	}
 	
 	public int getZonePort() {
