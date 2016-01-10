@@ -46,7 +46,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 	
 	public Forwarder() {
 		executor = Executors.newSingleThreadExecutor();
-		connections = new Connections(InetAddress.getLoopbackAddress(), 44463, 0);
+		connections = new Connections();
 		serverIpField = new TextField(connections.getRemoteAddress().getHostAddress());
 		serverPortField = new TextField(Integer.toString(connections.getRemotePort()));
 		serverSetButton = new Button("Set");
