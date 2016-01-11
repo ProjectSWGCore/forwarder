@@ -285,7 +285,7 @@ public class ServerConnection {
 	private void updateStatus(ConnectionStatus status) {
 		ConnectionStatus old = this.status;
 		this.status = status;
-		if (callback != null && callbackExecutor != null)
+		if (callback != null && callbackExecutor != null && old != status)
 			callbackExecutor.execute(() -> callback.onStatusChanged(old, status) );
 	}
 	
