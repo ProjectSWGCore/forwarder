@@ -4,6 +4,7 @@ import java.net.InetAddress;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.projectswg.ClientConnection.ClientCallback;
+import com.projectswg.ServerConnection.ConnectionStatus;
 import com.projectswg.ServerConnection.ServerCallback;
 
 public class Connections {
@@ -105,20 +106,15 @@ public class Connections {
 		});
 		server.setCallback(new ServerCallback() {
 			public void onData(byte[] data) { onDataRecvTcp(data); }
-			public void onConnected() { onServerConnected(); }
-			public void onDisconnected() { onServerDisconnected(); }
+			public void onStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status) { onServerStatusChanged(oldStatus, status); }
 		});
 	}
 	
-	private void onServerConnected() {
+	private void onServerStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status) {
+		if (oldStatus == ConnectionStatus.CONNECTED && status != ConnectionStatus.CONNECTED)
+			terminate();
 		if (callback != null)
-			callback.onServerConnected();
-	}
-	
-	private void onServerDisconnected() {
-		terminate();
-		if (callback != null)
-			callback.onServerDisconnected();
+			callback.onServerStatusChanged(oldStatus, status);
 	}
 	
 	private void onClientConnected() {
@@ -161,8 +157,7 @@ public class Connections {
 	}
 	
 	public interface ConnectionCallback {
-		void onServerConnected();
-		void onServerDisconnected();
+		void onServerStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status);
 		void onClientConnected();
 		void onClientDisconnected();
 		void onDataRecvTcp(byte [] data);

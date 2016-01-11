@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SocketChannel;
 import java.util.LinkedList;
+import java.util.Locale;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,6 +28,7 @@ public class ServerConnection {
 	private SocketChannel socket;
 	private boolean connected;
 	private ServerCallback callback;
+	private ConnectionStatus status;
 	private InetAddress addr;
 	private int port;
 	
@@ -41,6 +43,7 @@ public class ServerConnection {
 		lastBufferSizeModification = System.nanoTime();
 		this.addr = addr;
 		this.port = port;
+		status = ConnectionStatus.DISCONNECTED;
 		socket = null;
 		thread = null;
 		callback = null;
@@ -59,7 +62,7 @@ public class ServerConnection {
 	
 	public void stop() {
 		running = false;
-		disconnect();
+		disconnect(ConnectionStatus.DISCONNECTED);
 		if (thread != null)
 			thread.interrupt();
 		thread = null;
@@ -105,6 +108,7 @@ public class ServerConnection {
 			return true;
 		} catch (IOException e) {
 			e.printStackTrace();
+			disconnect(ConnectionStatus.OTHER_SIDE_TERMINATED);
 			return false;
 		}
 	}
@@ -124,7 +128,7 @@ public class ServerConnection {
 			packet = Compression.decompress(message, decompressedLength);
 		else
 			packet = message;
-		if (callback != null)
+		if (callback != null && callbackExecutor != null)
 			callbackExecutor.execute(() -> callback.onData(packet));
 		return true;
 	}
@@ -159,8 +163,7 @@ public class ServerConnection {
 		if (connected) {
 			while (!outQueue.isEmpty())
 				send(outQueue.poll());
-			if (callback != null)
-				callbackExecutor.execute(() -> callback.onConnected());
+			updateStatus(ConnectionStatus.CONNECTED);
 		} else
 			Thread.sleep(connecting ? 5 : 1000);
 		return connected;
@@ -172,7 +175,7 @@ public class ServerConnection {
 			data.limit(data.capacity());
 			int n = socket.read(data);
 			if (n < 0) {
-				disconnect();
+				disconnect(ConnectionStatus.OTHER_SIDE_TERMINATED);
 			} else if (n > 0) {
 				data.flip();
 				addToBuffer(data);
@@ -183,7 +186,7 @@ public class ServerConnection {
 					System.err.println("Connection reset");
 				else
 					e.printStackTrace();
-				disconnect();
+				disconnect(getReason(e.getMessage()));
 			}
 		} catch (Exception e) {
 			System.err.println("Failed to process buffer!");
@@ -250,22 +253,21 @@ public class ServerConnection {
 		synchronized (socketMutex) {
 			try {
 				if (socket != null)
-					disconnect();
+					disconnect(ConnectionStatus.DISCONNECTED);
 				socket = SocketChannel.open(new InetSocketAddress(addr, port));
 				reset();
 				return true;
 			} catch (IOException e) {
-				disconnect();
+				disconnect(getReason(e.getMessage()));
 				return false;
 			}
 		}
 	}
 	
-	private boolean disconnect() {
+	private boolean disconnect(ConnectionStatus status) {
 		synchronized (socketMutex) {
-			if (connected && callback != null)
-				callbackExecutor.execute(() -> callback.onDisconnected());
 			connected = false;
+			updateStatus(status);
 			if (socket == null)
 				return true;
 			try {
@@ -280,6 +282,13 @@ public class ServerConnection {
 		}
 	}
 	
+	private void updateStatus(ConnectionStatus status) {
+		ConnectionStatus old = this.status;
+		this.status = status;
+		if (callback != null && callbackExecutor != null)
+			callbackExecutor.execute(() -> callback.onStatusChanged(old, status) );
+	}
+	
 	private byte createBitmask(boolean compressed, boolean swg) {
 		byte bitfield = 0;
 		bitfield |= (compressed?1:0) << 0;
@@ -287,10 +296,34 @@ public class ServerConnection {
 		return bitfield;
 	}
 	
+	private ConnectionStatus getReason(String message) {
+		if (message.toLowerCase(Locale.US).contains("broken pipe"))
+			return ConnectionStatus.BROKEN_PIPE;
+		if (message.toLowerCase(Locale.US).contains("connection reset"))
+			return ConnectionStatus.CONNECTION_RESET;
+		if (message.toLowerCase(Locale.US).contains("connection refused"))
+			return ConnectionStatus.CONNECTION_REFUSED;
+		if (message.toLowerCase(Locale.US).contains("address in use"))
+			return ConnectionStatus.ADDR_IN_USE;
+		if (message.toLowerCase(Locale.US).contains("socket closed"))
+			return ConnectionStatus.DISCONNECTED;
+		System.err.println("Unknown reason: " + message);
+		return ConnectionStatus.DISCONNECTED;
+	}
+	
 	public interface ServerCallback {
-		void onConnected();
-		void onDisconnected();
+		void onStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status);
 		void onData(byte [] data);
+	}
+	
+	public enum ConnectionStatus {
+		CONNECTED,
+		BROKEN_PIPE,
+		CONNECTION_RESET,
+		CONNECTION_REFUSED,
+		ADDR_IN_USE,
+		OTHER_SIDE_TERMINATED,
+		DISCONNECTED
 	}
 	
 }

@@ -22,6 +22,7 @@ import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 
 import com.projectswg.Connections.ConnectionCallback;
+import com.projectswg.ServerConnection.ConnectionStatus;
 
 public class Forwarder extends Application implements ConnectionCallback {
 	
@@ -33,6 +34,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 	private final TextField serverPortField;
 	private final Button serverSetButton;
 	private final Text serverConnectionText;
+	private final Text serverStatusText;
 	private final Text clientConnectionText;
 	private final Text clientConnectionPort;
 	private final Text serverRxText;
@@ -51,6 +53,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 		serverPortField = new TextField(Integer.toString(connections.getRemotePort()));
 		serverSetButton = new Button("Set");
 		serverConnectionText = new Text(getConnectionStatus(false));
+		serverStatusText = new Text(ConnectionStatus.DISCONNECTED.name());
 		clientConnectionText = new Text(getConnectionStatus(false));
 		clientConnectionPort = new Text(Integer.toString(connections.getLoginPort()));
 		serverRxText = new Text(getByteName(connections.getTcpRecv()));
@@ -81,13 +84,11 @@ public class Forwarder extends Application implements ConnectionCallback {
 	}
 	
 	@Override
-	public void onServerConnected() {
-		Platform.runLater(() -> updateConnection(serverConnectionText, true));
-	}
-	
-	@Override
-	public void onServerDisconnected() {
-		Platform.runLater(() -> updateConnection(serverConnectionText, false));
+	public void onServerStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status) {
+		Platform.runLater(() -> {
+			serverStatusText.setText(status.name().replace('_', ' '));
+			updateConnection(serverConnectionText, status == ConnectionStatus.CONNECTED);
+		});
 	}
 	
 	@Override
@@ -161,7 +162,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 		clientConnectionPort.setText(Integer.toString(connections.getLoginPort()));
 		GridPane root = new GridPane();
 		setupGridPane(root);
-		Scene scene = new Scene(root, 300, 160);
+		Scene scene = new Scene(root, 400, 140);
 		primaryStage.setTitle("Holocore Forwarder");
 		primaryStage.setScene(scene);
 		primaryStage.setMinWidth(scene.getWidth());
@@ -185,16 +186,16 @@ public class Forwarder extends Application implements ConnectionCallback {
 	}
 	
 	private void setupGridPane(GridPane root) {
-		for (int i = 0; i < 4; i++) {
-			ColumnConstraints cc = new ColumnConstraints();
-			cc.setPercentWidth(25);
-			root.getColumnConstraints().add(cc);
-		}
+		addColumnConstraint(root, 50);
+		addColumnConstraint(root, 100);
+		addColumnConstraint(root, 75);
+		addColumnConstraint(root, 175);
 		root.add(serverIpField,			0, 0, 2, 1);
 		root.add(serverPortField,		2, 0, 1, 1);
 		root.add(serverSetButton,		3, 0, 1, 1);
 		root.add(new Text("Server Connection:"), 0, 1, 2, 1);
 		root.add(serverConnectionText,	2, 1, 1, 1);
+		root.add(serverStatusText,		3, 1, 1, 1);
 		root.add(new Text("Client Connection:"), 0, 2, 2, 1);
 		root.add(clientConnectionText,	2, 2, 2, 1);
 		root.add(clientConnectionPort,	3, 2, 1, 1);
@@ -206,6 +207,12 @@ public class Forwarder extends Application implements ConnectionCallback {
 		root.add(new Text("UDP"),		0, 5, 1, 1);
 		root.add(clientTxText,			1, 5, 1, 1);
 		root.add(clientRxText,			2, 5, 1, 1);
+	}
+	
+	private void addColumnConstraint(GridPane root, double width) {
+		ColumnConstraints cc = new ColumnConstraints();
+		cc.setPrefWidth(width);
+		root.getColumnConstraints().add(cc);
 	}
 	
 	private static String getByteName(long bytes) {
