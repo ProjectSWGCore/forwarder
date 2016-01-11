@@ -21,7 +21,7 @@ The way it works is by creating a very basic UDP server on each client, and havi
 
 ### Single Instance ###
 1. Start up the forwarder
-2. Open up login.cfg and set "loginServerAddress" to "127.0.0.1" and "loginServerPort" to whatever is listed next to the server connection status (e.x. 44453)
+2. Open up login.cfg and set "loginServerAddress" to "127.0.0.1" and "loginServerPort" to whatever is listed next to the client connection status (e.x. 44453)
 3. Start up the SWG client
 
 ### Multiple Instances ###

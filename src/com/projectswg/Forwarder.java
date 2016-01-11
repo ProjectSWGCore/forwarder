@@ -34,7 +34,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 	private final Button serverSetButton;
 	private final Text serverConnectionText;
 	private final Text clientConnectionText;
-	private final Text serverConnectionPort;
+	private final Text clientConnectionPort;
 	private final Text serverRxText;
 	private final Text serverTxText;
 	private final Text clientRxText;
@@ -52,7 +52,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 		serverSetButton = new Button("Set");
 		serverConnectionText = new Text(getConnectionStatus(false));
 		clientConnectionText = new Text(getConnectionStatus(false));
-		serverConnectionPort = new Text(Integer.toString(connections.getLoginPort()));
+		clientConnectionPort = new Text(Integer.toString(connections.getLoginPort()));
 		serverRxText = new Text(getByteName(connections.getTcpRecv()));
 		serverTxText = new Text(getByteName(connections.getTcpSent()));
 		clientRxText = new Text(getByteName(connections.getUdpRecv()));
@@ -158,29 +158,9 @@ public class Forwarder extends Application implements ConnectionCallback {
 	@Override
 	public void start(Stage primaryStage) throws Exception {
 		connections.initialize();
-		serverConnectionPort.setText(Integer.toString(connections.getLoginPort()));
+		clientConnectionPort.setText(Integer.toString(connections.getLoginPort()));
 		GridPane root = new GridPane();
-		for (int i = 0; i < 4; i++) {
-			ColumnConstraints cc = new ColumnConstraints();
-			cc.setPercentWidth(25);
-			root.getColumnConstraints().add(cc);
-		}
-		root.add(serverIpField,			0, 0, 2, 1);
-		root.add(serverPortField,		2, 0, 1, 1);
-		root.add(serverSetButton,		3, 0, 1, 1);
-		root.add(new Text("Server Connection:"), 0, 1, 2, 1);
-		root.add(serverConnectionText,	2, 1, 1, 1);
-		root.add(serverConnectionPort,	3, 1, 1, 1);
-		root.add(new Text("Client Connection:"), 0, 2, 2, 1);
-		root.add(clientConnectionText,	2, 2, 2, 1);
-		root.add(new Text("Sent"),		1, 3, 1, 1);
-		root.add(new Text("Recv"),		2, 3, 1, 1);
-		root.add(new Text("TCP"),		0, 4, 1, 1);
-		root.add(serverTxText,			1, 4, 1, 1);
-		root.add(serverRxText,			2, 4, 1, 1);
-		root.add(new Text("UDP"),		0, 5, 1, 1);
-		root.add(clientTxText,			1, 5, 1, 1);
-		root.add(clientRxText,			2, 5, 1, 1);
+		setupGridPane(root);
 		Scene scene = new Scene(root, 300, 160);
 		primaryStage.setTitle("Holocore Forwarder");
 		primaryStage.setScene(scene);
@@ -193,11 +173,39 @@ public class Forwarder extends Application implements ConnectionCallback {
 		primaryStage.show();
 		primaryStage.setOnCloseRequest(new EventHandler<WindowEvent>() {
 			public void handle(WindowEvent we) {
-				connections.terminate();
+				try {
+					connections.terminate();
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
 				primaryStage.close();
 				System.exit(0);
 			}
 		});
+	}
+	
+	private void setupGridPane(GridPane root) {
+		for (int i = 0; i < 4; i++) {
+			ColumnConstraints cc = new ColumnConstraints();
+			cc.setPercentWidth(25);
+			root.getColumnConstraints().add(cc);
+		}
+		root.add(serverIpField,			0, 0, 2, 1);
+		root.add(serverPortField,		2, 0, 1, 1);
+		root.add(serverSetButton,		3, 0, 1, 1);
+		root.add(new Text("Server Connection:"), 0, 1, 2, 1);
+		root.add(serverConnectionText,	2, 1, 1, 1);
+		root.add(new Text("Client Connection:"), 0, 2, 2, 1);
+		root.add(clientConnectionText,	2, 2, 2, 1);
+		root.add(clientConnectionPort,	3, 2, 1, 1);
+		root.add(new Text("Sent"),		1, 3, 1, 1);
+		root.add(new Text("Recv"),		2, 3, 1, 1);
+		root.add(new Text("TCP"),		0, 4, 1, 1);
+		root.add(serverTxText,			1, 4, 1, 1);
+		root.add(serverRxText,			2, 4, 1, 1);
+		root.add(new Text("UDP"),		0, 5, 1, 1);
+		root.add(clientTxText,			1, 5, 1, 1);
+		root.add(clientRxText,			2, 5, 1, 1);
 	}
 	
 	private static String getByteName(long bytes) {

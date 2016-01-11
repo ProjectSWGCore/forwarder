@@ -73,16 +73,19 @@ public class ClientSender {
 	
 	public void stop() {
 		disconnect(DisconnectReason.APPLICATION);
-		executor.shutdownNow();
+		if (executor != null)
+			executor.shutdownNow();
 		safeCloseServers();
 	}
 	
 	public void setLoginCallback(UDPCallback callback) {
-		loginServer.setCallback(callback);
+		if (loginServer != null)
+			loginServer.setCallback(callback);
 	}
 	
 	public void setZoneCallback(UDPCallback callback) {
-		zoneServer.setCallback(callback);
+		if (zoneServer != null)
+			zoneServer.setCallback(callback);
 	}
 	
 	public void setSenderCallback(ClientSenderCallback callback) {
@@ -175,10 +178,12 @@ public class ClientSender {
 	}
 	
 	public void sendRaw(int port, byte [] data) {
-		if (zone)
+		if (zone && zoneServer != null)
 			zoneServer.send(port, ADDR, data);
-		else
+		else if (!zone && loginServer != null)
 			loginServer.send(port, ADDR, data);
+		else
+			return;
 		if (callback != null)
 			callback.onUdpSent(zone, data);
 	}
