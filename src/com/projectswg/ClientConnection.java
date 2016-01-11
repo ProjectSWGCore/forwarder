@@ -3,9 +3,11 @@ package com.projectswg;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
 import com.projectswg.ClientReceiver.ClientReceiverCallback;
 import com.projectswg.ClientReceiver.ConnectionState;
 import com.projectswg.networking.NetInterceptor;
+import com.projectswg.networking.Packet;
 import com.projectswg.networking.swg.HeartBeat;
 
 public class ClientConnection {
@@ -63,6 +65,10 @@ public class ClientConnection {
 	
 	public void send(byte [] data) {
 		sender.send(data);
+	}
+	
+	public void send(Packet packet) {
+		sender.send(packet);
 	}
 	
 	public int getLoginPort() {

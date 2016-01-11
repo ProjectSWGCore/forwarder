@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import com.projectswg.ClientConnection.ClientCallback;
 import com.projectswg.ServerConnection.ConnectionStatus;
 import com.projectswg.ServerConnection.ServerCallback;
+import com.projectswg.networking.swg.ErrorMessage;
 
 public class Connections {
 	
@@ -111,8 +112,11 @@ public class Connections {
 	}
 	
 	private void onServerStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status) {
-		if (oldStatus == ConnectionStatus.CONNECTED && status != ConnectionStatus.CONNECTED)
+		if (status != ConnectionStatus.CONNECTED) {
+			client.send(new ErrorMessage("Connection Update", "\n" + status.name().replace('_', ' '), false));
+			try { Thread.sleep(50); } catch (InterruptedException e) { }
 			terminate();
+		}
 		if (callback != null)
 			callback.onServerStatusChanged(oldStatus, status);
 	}
