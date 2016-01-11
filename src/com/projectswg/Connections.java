@@ -116,6 +116,7 @@ public class Connections {
 			client.send(new ErrorMessage("Connection Update", "\n" + status.name().replace('_', ' '), false));
 			try { Thread.sleep(50); } catch (InterruptedException e) { }
 			terminate();
+			client.start();
 		}
 		if (callback != null)
 			callback.onServerStatusChanged(oldStatus, status);

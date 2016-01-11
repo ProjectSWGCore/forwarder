@@ -51,7 +51,7 @@ public class ClientSender {
 		zone = false;
 	}
 	
-	public boolean start() {
+	public synchronized boolean start() {
 		safeCloseServers();
 		try {
 			loginServer = new UDPServer(loginPort, 496);
@@ -71,36 +71,36 @@ public class ClientSender {
 		return false;
 	}
 	
-	public void stop() {
+	public synchronized void stop() {
 		disconnect(DisconnectReason.APPLICATION);
 		if (executor != null)
 			executor.shutdownNow();
 		safeCloseServers();
 	}
 	
-	public void setLoginCallback(UDPCallback callback) {
+	public synchronized void setLoginCallback(UDPCallback callback) {
 		if (loginServer != null)
 			loginServer.setCallback(callback);
 	}
 	
-	public void setZoneCallback(UDPCallback callback) {
+	public synchronized void setZoneCallback(UDPCallback callback) {
 		if (zoneServer != null)
 			zoneServer.setCallback(callback);
 	}
 	
-	public void setSenderCallback(ClientSenderCallback callback) {
+	public synchronized void setSenderCallback(ClientSenderCallback callback) {
 		this.callback = callback;
 	}
 	
-	public void setLoginPort(int loginPort) {
+	public synchronized void setLoginPort(int loginPort) {
 		this.loginPort = loginPort;
 	}
 	
-	public int getLoginPort() {
+	public synchronized int getLoginPort() {
 		return loginPort;
 	}
 	
-	public int getZonePort() {
+	public synchronized int getZonePort() {
 		if (zoneServer == null)
 			return -1;
 		return zoneServer.getPort();
@@ -177,7 +177,7 @@ public class ClientSender {
 		sendRaw(port, data);
 	}
 	
-	public void sendRaw(int port, byte [] data) {
+	public synchronized void sendRaw(int port, byte [] data) {
 		if (zone && zoneServer != null)
 			zoneServer.send(port, ADDR, data);
 		else if (!zone && loginServer != null)
