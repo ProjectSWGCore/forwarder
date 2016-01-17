@@ -11,6 +11,7 @@ import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
@@ -30,6 +31,8 @@ public class Forwarder extends Application implements ConnectionCallback {
 	
 	private final ExecutorService executor;
 	private final Connections connections;
+	private final TextField usernameField;
+	private final TextField passwordField;
 	private final TextField serverIpField;
 	private final TextField serverPortField;
 	private final Button serverSetButton;
@@ -49,6 +52,8 @@ public class Forwarder extends Application implements ConnectionCallback {
 	public Forwarder() {
 		executor = Executors.newSingleThreadExecutor();
 		connections = new Connections();
+		usernameField = new TextField("");
+		passwordField = new PasswordField();
 		serverIpField = new TextField(connections.getRemoteAddress().getHostAddress());
 		serverPortField = new TextField(Integer.toString(connections.getRemotePort()));
 		serverSetButton = new Button("Set");
@@ -71,6 +76,10 @@ public class Forwarder extends Application implements ConnectionCallback {
 					updateServerButton();
 			}
 		};
+		usernameField.promptTextProperty().setValue("Username");
+		passwordField.promptTextProperty().setValue("Password");
+		usernameField.textProperty().addListener((event, oldValue, newValue) -> connections.getInterceptorProperties().setUsername(newValue));
+		passwordField.textProperty().addListener((event, oldValue, newValue) -> connections.getInterceptorProperties().setPassword(newValue));
 		serverIpField.setOnKeyPressed(handler);
 		serverPortField.setOnKeyPressed(handler);
 		serverIpField.setOnKeyTyped(handler);
@@ -162,7 +171,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 		clientConnectionPort.setText(Integer.toString(connections.getLoginPort()));
 		GridPane root = new GridPane();
 		setupGridPane(root);
-		Scene scene = new Scene(root, 400, 140);
+		Scene scene = new Scene(root, 400, 160);
 		primaryStage.setTitle("Holocore Forwarder");
 		primaryStage.setScene(scene);
 		primaryStage.setMinWidth(scene.getWidth());
@@ -190,23 +199,25 @@ public class Forwarder extends Application implements ConnectionCallback {
 		addColumnConstraint(root, 100);
 		addColumnConstraint(root, 75);
 		addColumnConstraint(root, 175);
-		root.add(serverIpField,			0, 0, 2, 1);
-		root.add(serverPortField,		2, 0, 1, 1);
-		root.add(serverSetButton,		3, 0, 1, 1);
-		root.add(new Text("Server Connection:"), 0, 1, 2, 1);
-		root.add(serverConnectionText,	2, 1, 1, 1);
-		root.add(serverStatusText,		3, 1, 1, 1);
-		root.add(new Text("Client Connection:"), 0, 2, 2, 1);
-		root.add(clientConnectionText,	2, 2, 2, 1);
-		root.add(clientConnectionPort,	3, 2, 1, 1);
-		root.add(new Text("Sent"),		1, 3, 1, 1);
-		root.add(new Text("Recv"),		2, 3, 1, 1);
-		root.add(new Text("TCP"),		0, 4, 1, 1);
-		root.add(serverTxText,			1, 4, 1, 1);
-		root.add(serverRxText,			2, 4, 1, 1);
-		root.add(new Text("UDP"),		0, 5, 1, 1);
-		root.add(clientTxText,			1, 5, 1, 1);
-		root.add(clientRxText,			2, 5, 1, 1);
+		root.add(usernameField,			0, 0, 2, 1);
+		root.add(passwordField,			2, 0, 2, 1);
+		root.add(serverIpField,			0, 1, 2, 1);
+		root.add(serverPortField,		2, 1, 1, 1);
+		root.add(serverSetButton,		3, 1, 1, 1);
+		root.add(new Text("Server Connection:"), 0, 2, 2, 1);
+		root.add(serverConnectionText,	2, 2, 1, 1);
+		root.add(serverStatusText,		3, 2, 1, 1);
+		root.add(new Text("Client Connection:"), 0, 3, 2, 1);
+		root.add(clientConnectionText,	2, 3, 2, 1);
+		root.add(clientConnectionPort,	3, 3, 1, 1);
+		root.add(new Text("Sent"),		1, 4, 1, 1);
+		root.add(new Text("Recv"),		2, 4, 1, 1);
+		root.add(new Text("TCP"),		0, 5, 1, 1);
+		root.add(serverTxText,			1, 5, 1, 1);
+		root.add(serverRxText,			2, 5, 1, 1);
+		root.add(new Text("UDP"),		0, 6, 1, 1);
+		root.add(clientTxText,			1, 6, 1, 1);
+		root.add(clientRxText,			2, 6, 1, 1);
 	}
 	
 	private void addColumnConstraint(GridPane root, double width) {

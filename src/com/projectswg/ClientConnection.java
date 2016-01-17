@@ -8,6 +8,7 @@ import com.projectswg.ClientReceiver.ClientReceiverCallback;
 import com.projectswg.ClientReceiver.ConnectionState;
 import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.Packet;
+import com.projectswg.networking.NetInterceptor.InterceptorProperties;
 import com.projectswg.networking.swg.HeartBeat;
 
 public class ClientConnection {
@@ -28,11 +29,20 @@ public class ClientConnection {
 		receiver.setClientSender(sender);
 	}
 	
+	public InterceptorProperties getInterceptorProperties() {
+		return interceptor.getProperties();
+	}
+	
+	public boolean restart() {
+		stop();
+		return start();
+	}
+	
 	public boolean start() {
 		if (!sender.start())
 			return false;
 		receiver.start();
-		interceptor.setPort(sender.getZonePort());
+		interceptor.getProperties().setPort(sender.getZonePort());
 		sender.setLoginCallback((packet) -> receiver.onPacket(false, packet));
 		sender.setZoneCallback((packet) -> receiver.onPacket(true, packet));
 		receiver.setReceiverCallback(new ClientReceiverCallback() {
@@ -48,8 +58,9 @@ public class ClientConnection {
 		return true;
 	}
 	
-	public void stop() {
-		pinger.shutdownNow();
+	private void stop() {
+		if (pinger != null)
+			pinger.shutdownNow();
 		sender.stop();
 		receiver.stop();
 		onDisconnected();

@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import com.projectswg.ClientConnection.ClientCallback;
 import com.projectswg.ServerConnection.ConnectionStatus;
 import com.projectswg.ServerConnection.ServerCallback;
+import com.projectswg.networking.NetInterceptor.InterceptorProperties;
 import com.projectswg.networking.swg.ErrorMessage;
 
 public class Connections {
@@ -50,7 +51,10 @@ public class Connections {
 	
 	public void terminate() {
 		server.stop();
-		client.stop();
+		for (int i = 0; i < 3; i++) {
+			if (client.restart())
+				break;
+		}
 	}
 	
 	public void setCallback(ConnectionCallback callback) {
@@ -62,7 +66,6 @@ public class Connections {
 			return;
 		terminate();
 		server.setRemoteAddress(addr, port);
-		initialize();
 	}
 	
 	public InetAddress getRemoteAddress() {
@@ -97,6 +100,10 @@ public class Connections {
 		return udpSent.get();
 	}
 	
+	public InterceptorProperties getInterceptorProperties() {
+		return client.getInterceptorProperties();
+	}
+	
 	private void setCallbacks() {
 		client.setCallback(new ClientCallback() {
 			public void onPacket(byte[] data) { onDataSentTcp(data); }
@@ -116,7 +123,6 @@ public class Connections {
 			client.send(new ErrorMessage("Connection Update", "\n" + status.name().replace('_', ' '), false));
 			try { Thread.sleep(50); } catch (InterruptedException e) { }
 			terminate();
-			client.start();
 		}
 		if (callback != null)
 			callback.onServerStatusChanged(oldStatus, status);
@@ -132,7 +138,6 @@ public class Connections {
 		terminate();
 		if (callback != null)
 			callback.onClientDisconnected();
-		client.start();
 	}
 	
 	private void onDataRecvTcp(byte [] data) {
