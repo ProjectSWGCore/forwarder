@@ -45,10 +45,8 @@ public class NetInterceptor {
 	
 	private byte [] setAutoLogin(ByteBuffer data) {
 		LoginClientId id = new LoginClientId(data);
-		if (!id.getUsername().equals(properties.getUsername()) || !id.getPassword().isEmpty()) {
+		if (!id.getUsername().equals(properties.getUsername()) || !id.getPassword().isEmpty())
 			return data.array();
-		}
-		System.out.println("Set Password: " + properties.getPassword());
 		id.setPassword(properties.getPassword());
 		return id.encode().array();
 	}
