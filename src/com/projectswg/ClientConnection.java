@@ -139,7 +139,9 @@ public class ClientConnection {
 	private void ping() {
 		if (!connected)
 			return;
-		if (receiver.getTimeSinceLastPacket() > 5000)
+		if (receiver.getTimeSinceLastPacket() > 5000 && !interceptor.getData().isZoning())
+			onDisconnected();
+		else if (receiver.getTimeSinceLastPacket() > 15000 && interceptor.getData().isZoning())
 			onDisconnected();
 		else
 			sender.send(new HeartBeat().encode().array());

@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import com.projectswg.networking.encryption.Compression;
 
@@ -61,6 +62,8 @@ public class ServerConnection {
 	}
 	
 	public void stop() {
+		if (!running)
+			return;
 		running = false;
 		disconnect(ConnectionStatus.DISCONNECTED);
 		if (thread != null)
@@ -70,6 +73,12 @@ public class ServerConnection {
 			processor.shutdownNow();
 		if (callbackExecutor != null)
 			callbackExecutor.shutdownNow();
+		try {
+			processor.awaitTermination(1, TimeUnit.MINUTES);
+			callbackExecutor.awaitTermination(1, TimeUnit.MINUTES);
+		} catch (InterruptedException e) {
+			
+		}
 		processor = null;
 		callbackExecutor = null;
 	}
@@ -182,10 +191,12 @@ public class ServerConnection {
 			}
 		} catch (IOException e) {
 			if (connected) {
-				if (e.getMessage().equals("Connection reset"))
-					System.err.println("Connection reset");
-				else
-					e.printStackTrace();
+				if (e != null) {
+					if (e.getMessage().equals("Connection reset"))
+						System.err.println("Connection reset");
+					else
+						e.printStackTrace();
+				}
 				disconnect(getReason(e.getMessage()));
 			}
 		} catch (Exception e) {
@@ -196,6 +207,8 @@ public class ServerConnection {
 	}
 	
 	private void addToBuffer(ByteBuffer data) {
+		if (!running)
+			return;
 		synchronized (bufferMutex) {
 			if (data.remaining() > buffer.remaining()) { // Increase size
 				int nCapacity = buffer.capacity() * 2;
@@ -213,7 +226,8 @@ public class ServerConnection {
 					shrinkBuffer();
 			}
 		}
-		processor.execute(() -> process());
+		if (running)
+			processor.execute(() -> process());
 	}
 	
 	private void shrinkBuffer() {
@@ -258,7 +272,10 @@ public class ServerConnection {
 				reset();
 				return true;
 			} catch (IOException e) {
-				disconnect(getReason(e.getMessage()));
+				if (e.getMessage() == null)
+					disconnect(ConnectionStatus.DISCONNECTED);
+				else
+					disconnect(getReason(e.getMessage()));
 				return false;
 			}
 		}

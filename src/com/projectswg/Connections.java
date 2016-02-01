@@ -51,9 +51,12 @@ public class Connections {
 	
 	public void terminate() {
 		server.stop();
-		for (int i = 0; i < 3; i++) {
-			if (client.restart())
+		while (!client.restart()) {
+			try {
+				Thread.sleep(5);
+			} catch (InterruptedException e) {
 				break;
+			}
 		}
 	}
 	
