@@ -12,6 +12,7 @@ import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.projectswg.networking.encryption.Compression;
 
@@ -22,8 +23,10 @@ public class ServerConnection {
 	private final Object bufferMutex;
 	private final Object socketMutex;
 	private final Queue<byte []> outQueue;
-	private ExecutorService processor;
+	private ExecutorService processorExecutor;
 	private ExecutorService callbackExecutor;
+	private ExecutorService connectionExecutor;
+	private AtomicBoolean running;
 	private ByteBuffer buffer;
 	private long lastBufferSizeModification;
 	private SocketChannel socket;
@@ -33,55 +36,42 @@ public class ServerConnection {
 	private InetAddress addr;
 	private int port;
 	
-	private Thread thread;
-	private boolean running;
-	
 	public ServerConnection(InetAddress addr, int port) {
 		this.bufferMutex = new Object();
 		this.socketMutex = new Object();
 		this.outQueue = new LinkedList<>();
 		this.buffer = ByteBuffer.allocate(DEFAULT_BUFFER).order(ByteOrder.LITTLE_ENDIAN);
+		this.running = new AtomicBoolean(false);
 		lastBufferSizeModification = System.nanoTime();
 		this.addr = addr;
 		this.port = port;
 		status = ConnectionStatus.DISCONNECTED;
 		socket = null;
-		thread = null;
 		callback = null;
-		running = false;
 		connected = false;
+		stop();
 	}
 	
 	public void start() {
-		stop();
-		processor = Executors.newSingleThreadExecutor();
+		if (running.get())
+			return;
+		processorExecutor = Executors.newSingleThreadExecutor();
+		connectionExecutor = Executors.newSingleThreadExecutor();
 		callbackExecutor = Executors.newSingleThreadExecutor();
-		running = true;
-		thread = new Thread(() -> run());
-		thread.start();
+		running.set(true);
+		connectionExecutor.execute(() -> run());
 	}
 	
 	public void stop() {
-		if (!running)
+		if (!running.get())
 			return;
-		running = false;
+		running.set(false);
 		disconnect(ConnectionStatus.DISCONNECTED);
-		if (thread != null)
-			thread.interrupt();
-		thread = null;
-		if (processor != null)
-			processor.shutdownNow();
-		if (callbackExecutor != null)
-			callbackExecutor.shutdownNow();
-		try {
-			if (processor != null)
-				processor.awaitTermination(1, TimeUnit.MINUTES);
-			if (callbackExecutor != null)
-				callbackExecutor.awaitTermination(1, TimeUnit.MINUTES);
-		} catch (InterruptedException e) {
-			
-		}
-		processor = null;
+		safeShutdown(connectionExecutor);
+		safeShutdown(processorExecutor);
+		safeShutdown(callbackExecutor);
+		processorExecutor = null;
+		connectionExecutor = null;
 		callbackExecutor = null;
 	}
 	
@@ -147,7 +137,7 @@ public class ServerConnection {
 	private void run() {
 		ByteBuffer buffer = ByteBuffer.allocateDirect(4*1024);
 		try {
-			while (running) {
+			while (running.get()) {
 				if (!connected)
 					loopDisconnected();
 				else
@@ -158,7 +148,6 @@ public class ServerConnection {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		running = false;
 	}
 	
 	private boolean loopDisconnected() throws InterruptedException {
@@ -192,15 +181,10 @@ public class ServerConnection {
 				addToBuffer(data);
 			}
 		} catch (IOException e) {
-			if (connected) {
-				if (e != null) {
-					if (e.getMessage().equals("Connection reset"))
-						System.err.println("Connection reset");
-					else
-						e.printStackTrace();
-				}
+			if (e.getMessage() == null)
+				disconnect(ConnectionStatus.DISCONNECT_UNKNOWN_REASON);
+			else
 				disconnect(getReason(e.getMessage()));
-			}
 		} catch (Exception e) {
 			System.err.println("Failed to process buffer!");
 			e.printStackTrace();
@@ -209,7 +193,7 @@ public class ServerConnection {
 	}
 	
 	private void addToBuffer(ByteBuffer data) {
-		if (!running)
+		if (!running.get())
 			return;
 		synchronized (bufferMutex) {
 			if (data.remaining() > buffer.remaining()) { // Increase size
@@ -228,8 +212,8 @@ public class ServerConnection {
 					shrinkBuffer();
 			}
 		}
-		if (running)
-			processor.execute(() -> process());
+		if (running.get())
+			processorExecutor.execute(() -> process());
 	}
 	
 	private void shrinkBuffer() {
@@ -275,7 +259,7 @@ public class ServerConnection {
 				return true;
 			} catch (IOException e) {
 				if (e.getMessage() == null)
-					disconnect(ConnectionStatus.DISCONNECTED);
+					disconnect(ConnectionStatus.DISCONNECT_UNKNOWN_REASON);
 				else
 					disconnect(getReason(e.getMessage()));
 				return false;
@@ -285,10 +269,12 @@ public class ServerConnection {
 	
 	private boolean disconnect(ConnectionStatus status) {
 		synchronized (socketMutex) {
-			connected = false;
-			updateStatus(status);
+			if (!connected)
+				return true;
 			if (socket == null)
 				return true;
+			connected = false;
+			updateStatus(status);
 			try {
 				socket.close();
 				socket = null;
@@ -329,7 +315,22 @@ public class ServerConnection {
 		if (message.toLowerCase(Locale.US).contains("no route to host"))
 			return ConnectionStatus.NO_ROUTE_TO_HOST;
 		System.err.println("Unknown reason: " + message);
-		return ConnectionStatus.DISCONNECTED;
+		return ConnectionStatus.DISCONNECT_UNKNOWN_REASON;
+	}
+	
+	private boolean safeShutdown(ExecutorService ex) {
+		if (ex == null)
+			return true;
+		ex.shutdownNow();
+		return attemptAwaitTermination(ex);
+	}
+	
+	private boolean attemptAwaitTermination(ExecutorService ex) {
+		try {
+			return ex.awaitTermination(5, TimeUnit.SECONDS);
+		} catch (InterruptedException e) {
+			return false;
+		}
 	}
 	
 	public interface ServerCallback {
@@ -345,6 +346,7 @@ public class ServerConnection {
 		ADDR_IN_USE,
 		OTHER_SIDE_TERMINATED,
 		NO_ROUTE_TO_HOST,
+		DISCONNECT_UNKNOWN_REASON,
 		DISCONNECTED
 	}
 	
