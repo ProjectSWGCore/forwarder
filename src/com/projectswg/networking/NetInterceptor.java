@@ -32,9 +32,6 @@ public class NetInterceptor {
 		switch (bb.getInt(2)) {
 			case 0x41131F96:
 				return setAutoLogin(bb);
-			case 0x3AE6DFAE: // CmdStartScene
-				this.data.setZoning(true);
-				return data;
 			case 0x43FD1C22: // CmdSceneReady
 				this.data.setZoning(false);
 				return data;
@@ -50,6 +47,9 @@ public class NetInterceptor {
 		switch (bb.getInt(2)) {
 			case 0x3436AEB6:
 				return getServerList(bb);
+			case 0x3AE6DFAE: // CmdStartScene
+				this.data.setZoning(true);
+				return data;
 			default:
 				return data;
 		}
