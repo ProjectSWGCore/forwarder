@@ -326,6 +326,8 @@ public class ServerConnection {
 			return ConnectionStatus.ADDR_IN_USE;
 		if (message.toLowerCase(Locale.US).contains("socket closed"))
 			return ConnectionStatus.DISCONNECTED;
+		if (message.toLowerCase(Locale.US).contains("no route to host"))
+			return ConnectionStatus.NO_ROUTE_TO_HOST;
 		System.err.println("Unknown reason: " + message);
 		return ConnectionStatus.DISCONNECTED;
 	}
@@ -342,6 +344,7 @@ public class ServerConnection {
 		CONNECTION_REFUSED,
 		ADDR_IN_USE,
 		OTHER_SIDE_TERMINATED,
+		NO_ROUTE_TO_HOST,
 		DISCONNECTED
 	}
 	
