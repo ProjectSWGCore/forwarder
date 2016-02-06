@@ -74,8 +74,10 @@ public class ServerConnection {
 		if (callbackExecutor != null)
 			callbackExecutor.shutdownNow();
 		try {
-			processor.awaitTermination(1, TimeUnit.MINUTES);
-			callbackExecutor.awaitTermination(1, TimeUnit.MINUTES);
+			if (processor != null)
+				processor.awaitTermination(1, TimeUnit.MINUTES);
+			if (callbackExecutor != null)
+				callbackExecutor.awaitTermination(1, TimeUnit.MINUTES);
 		} catch (InterruptedException e) {
 			
 		}
