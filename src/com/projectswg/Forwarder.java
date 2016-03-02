@@ -7,14 +7,10 @@ import java.util.concurrent.Executors;
 
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.scene.Scene;
-import javafx.scene.control.Button;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.paint.Color;
@@ -35,7 +31,6 @@ public class Forwarder extends Application implements ConnectionCallback {
 	private final TextField passwordField;
 	private final TextField serverIpField;
 	private final TextField serverPortField;
-	private final Button serverSetButton;
 	private final Text serverConnectionText;
 	private final Text serverStatusText;
 	private final Text clientConnectionText;
@@ -56,7 +51,6 @@ public class Forwarder extends Application implements ConnectionCallback {
 		passwordField = new PasswordField();
 		serverIpField = new TextField(connections.getRemoteAddress().getHostAddress());
 		serverPortField = new TextField(Integer.toString(connections.getRemotePort()));
-		serverSetButton = new Button("Set");
 		serverConnectionText = new Text(getConnectionStatus(false));
 		serverStatusText = new Text(ConnectionStatus.DISCONNECTED.name());
 		clientConnectionText = new Text(getConnectionStatus(false));
@@ -67,28 +61,12 @@ public class Forwarder extends Application implements ConnectionCallback {
 		clientTxText = new Text(getByteName(connections.getUdpSent()));
 		updateConnection(serverConnectionText, false);
 		updateConnection(clientConnectionText, false);
-		updateServerButton();
-		EventHandler<KeyEvent> handler = new EventHandler<KeyEvent>() {
-			public void handle(KeyEvent event) {
-				if (event.getCode() == KeyCode.ENTER)
-					updateServerIp();
-				else
-					updateServerButton();
-			}
-		};
 		usernameField.promptTextProperty().setValue("Username");
 		passwordField.promptTextProperty().setValue("Password");
 		usernameField.textProperty().addListener((event, oldValue, newValue) -> connections.getInterceptorProperties().setUsername(newValue));
 		passwordField.textProperty().addListener((event, oldValue, newValue) -> connections.getInterceptorProperties().setPassword(newValue));
-		serverIpField.setOnKeyPressed(handler);
-		serverPortField.setOnKeyPressed(handler);
-		serverIpField.setOnKeyTyped(handler);
-		serverPortField.setOnKeyTyped(handler);
-		serverSetButton.setOnAction(new EventHandler<ActionEvent>(){
-			public void handle(ActionEvent event) {
-				updateServerIp();
-			}
-		});
+		serverIpField.setOnKeyPressed((event) -> updateServerIp());
+		serverPortField.setOnKeyPressed((event) -> updateServerIp());
 		connections.setCallback(this);
 	}
 	
@@ -147,22 +125,6 @@ public class Forwarder extends Application implements ConnectionCallback {
 				System.err.println("Invalid Port: " + serverPortField.getText());
 			}
 		});
-		updateServerButton();
-	}
-	
-	private void updateServerButton() {
-		executor.execute(() -> {
-			try {
-				InetAddress addr = InetAddress.getByName(serverIpField.getText());
-				int port = Integer.parseInt(serverPortField.getText());
-				if (!addr.equals(connections.getRemoteAddress()) || port != connections.getRemotePort())
-					Platform.runLater(() -> serverSetButton.setDisable(false));
-				else
-					Platform.runLater(() -> serverSetButton.setDisable(true));
-			} catch (UnknownHostException | NumberFormatException e) {
-				serverSetButton.setDisable(true);
-			}
-		});
 	}
 	
 	@Override
@@ -203,7 +165,6 @@ public class Forwarder extends Application implements ConnectionCallback {
 		root.add(passwordField,			2, 0, 2, 1);
 		root.add(serverIpField,			0, 1, 2, 1);
 		root.add(serverPortField,		2, 1, 1, 1);
-		root.add(serverSetButton,		3, 1, 1, 1);
 		root.add(new Text("Server Connection:"), 0, 2, 2, 1);
 		root.add(serverConnectionText,	2, 2, 1, 1);
 		root.add(serverStatusText,		3, 2, 1, 1);
