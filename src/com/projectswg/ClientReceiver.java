@@ -25,6 +25,7 @@ import com.projectswg.networking.soe.SessionRequest;
 import com.projectswg.networking.soe.SessionResponse;
 import com.projectswg.networking.swg.ServerId;
 import com.projectswg.networking.swg.ServerString;
+import com.projectswg.utilities.ByteUtilities;
 
 public class ClientReceiver {
 	
@@ -153,7 +154,7 @@ public class ClientReceiver {
 				onAcknowledge(new Acknowledge(data));
 				break;
 			default:
-				System.out.println("onPacket(addr=localhost:"+port+", type="+data.getShort(0)+", "+Arrays.toString(data.array())+")");
+				System.out.println("onPacket(addr=localhost:"+port+", type="+data.getShort(0)+", "+ByteUtilities.getHexString(data.array())+")");
 				break;
 		}
 	}
