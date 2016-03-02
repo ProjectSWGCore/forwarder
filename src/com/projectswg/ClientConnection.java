@@ -12,6 +12,8 @@ import com.projectswg.networking.NetInterceptor.InterceptorProperties;
 import com.projectswg.networking.swg.HeartBeat;
 
 public class ClientConnection {
+
+	private final boolean timeout;
 	
 	private ScheduledExecutorService pinger;
 	private ClientSender sender;
@@ -20,7 +22,8 @@ public class ClientConnection {
 	private NetInterceptor interceptor;
 	private boolean connected;
 	
-	public ClientConnection(int loginPort) {
+	public ClientConnection(int loginPort, boolean timeout) {
+		this.timeout = timeout;
 		callback = null;
 		connected = false;
 		interceptor = new NetInterceptor();
@@ -58,7 +61,7 @@ public class ClientConnection {
 		return true;
 	}
 	
-	private void stop() {
+	public void stop() {
 		if (pinger != null)
 			pinger.shutdownNow();
 		sender.stop();
@@ -137,11 +140,11 @@ public class ClientConnection {
 	}
 	
 	private void ping() {
-		if (!connected)
+		if (!connected || !timeout)
 			return;
 		if (receiver.getTimeSinceLastPacket() > 5000 && !interceptor.getData().isZoning())
 			onDisconnected();
-		else if (receiver.getTimeSinceLastPacket() > 15000 && interceptor.getData().isZoning())
+		else if (receiver.getTimeSinceLastPacket() > 30000 && interceptor.getData().isZoning())
 			onDisconnected();
 		else
 			sender.send(new HeartBeat().encode().array());

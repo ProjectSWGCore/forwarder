@@ -110,6 +110,14 @@ public class ClientSender {
 		return txSequence;
 	}
 	
+	public boolean isRunning() {
+		if (loginServer != null && !loginServer.isRunning())
+			return false;
+		if (zoneServer != null && !zoneServer.isRunning())
+			return false;
+		return loginServer != null || zoneServer != null;
+	}
+	
 	public void setZone(boolean zone) {
 		this.zone = zone;
 	}
@@ -206,7 +214,7 @@ public class ClientSender {
 	}
 	
 	private void outboundRunnable() {
-		while (true) {
+		while (isRunning()) {
 			synchronized (sentPackets) {
 				for (SequencedOutbound packet : sentPackets) {
 					if (packet.getTimeSinceSent() >= 2000) {
@@ -230,7 +238,7 @@ public class ClientSender {
 		Queue<byte []> outbound = new ArrayBlockingQueue<>(8, true);
 		int size = 0;
 		boolean lastWasEmpty = false;
-		while (true) {
+		while (isRunning()) {
 			size = dataHeaderSize;
 			synchronized (inboundQueue) {
 				if (inboundQueue.isEmpty() && lastWasEmpty) {

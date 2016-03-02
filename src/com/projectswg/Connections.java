@@ -23,15 +23,15 @@ public class Connections {
 	private int loginPort;
 	
 	public Connections() {
-		this(InetAddress.getLoopbackAddress(), 44463, 44453);
+		this(InetAddress.getLoopbackAddress(), 44463, 44453, true);
 	}
 	
-	public Connections(InetAddress remoteAddr, int remotePort, int loginPort) {
+	public Connections(InetAddress remoteAddr, int remotePort, int loginPort, boolean timeout) {
 		this.addr = remoteAddr;
 		this.port = remotePort;
 		this.loginPort = loginPort;
 		server = new ServerConnection(remoteAddr, remotePort);
-		client = new ClientConnection(loginPort);
+		client = new ClientConnection(loginPort, timeout);
 		tcpRecv = new AtomicLong(0);
 		tcpSent = new AtomicLong(0);
 		udpRecv = new AtomicLong(0);
@@ -51,6 +51,11 @@ public class Connections {
 	
 	public void terminate() {
 		server.stop();
+		client.stop();
+	}
+	
+	public void softTerminate() {
+		server.stop();
 		while (!client.restart()) {
 			try {
 				Thread.sleep(5);
@@ -67,7 +72,7 @@ public class Connections {
 	public void setRemote(InetAddress addr, int port) {
 		if (this.addr.equals(addr) && this.port == port)
 			return;
-		terminate();
+		softTerminate();
 		server.setRemoteAddress(addr, port);
 	}
 	
@@ -125,7 +130,7 @@ public class Connections {
 		if (status != ConnectionStatus.CONNECTED) {
 			client.send(new ErrorMessage("Connection Update", "\n" + status.name().replace('_', ' '), false));
 			try { Thread.sleep(50); } catch (InterruptedException e) { }
-			terminate();
+			softTerminate();
 		}
 		if (callback != null)
 			callback.onServerStatusChanged(oldStatus, status);
@@ -138,7 +143,7 @@ public class Connections {
 	}
 	
 	private void onClientDisconnected() {
-		terminate();
+		softTerminate();
 		if (callback != null)
 			callback.onClientDisconnected();
 	}
