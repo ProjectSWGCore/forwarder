@@ -2,18 +2,21 @@ package com.projectswg;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.projectswg.networking.NetInterceptor;
+import com.projectswg.networking.Packet;
 import com.projectswg.networking.UDPServer.UDPPacket;
 import com.projectswg.networking.encryption.Encryption;
 import com.projectswg.networking.soe.Acknowledge;
 import com.projectswg.networking.soe.ClientNetworkStatusUpdate;
 import com.projectswg.networking.soe.DataChannelA;
 import com.projectswg.networking.soe.Disconnect;
+import com.projectswg.networking.soe.Fragmented;
 import com.projectswg.networking.soe.KeepAlive;
 import com.projectswg.networking.soe.MultiPacket;
 import com.projectswg.networking.soe.OutOfOrder;
@@ -29,6 +32,7 @@ public class ClientReceiver {
 	
 	private final NetInterceptor interceptor;
 	private final AtomicLong lastPacket;
+	private final List<Fragmented> fragmentedBuffer;
 	private ExecutorService executor;
 	private ClientSender sender;
 	private ClientReceiverCallback callback;
@@ -40,6 +44,7 @@ public class ClientReceiver {
 	public ClientReceiver(NetInterceptor interceptor) {
 		this.interceptor = interceptor;
 		this.lastPacket = new AtomicLong(0);
+		this.fragmentedBuffer = new ArrayList<>();
 		setConnectionState(ConnectionState.DISCONNECTED);
 		sender = null;
 		callback = null;
@@ -138,6 +143,9 @@ public class ClientReceiver {
 			case 9:
 				onDataChannel(new DataChannelA(data));
 				break;
+			case 0x0D:
+				onFragmented(new Fragmented(data));
+				break;
 			case 17:
 				onOutOfOrder(new OutOfOrder(data));
 				break;
@@ -208,6 +216,39 @@ public class ClientReceiver {
 		for (byte [] data : dataChannel.getPackets()) {
 			onSWGPacket(data);
 		}
+	}
+	
+	private void onFragmented(Fragmented frag) {
+		if (frag.getSequence() != rxSequence+1) {
+			if (frag.getSequence() > rxSequence)
+				sender.send(new OutOfOrder(frag.getSequence()));
+			System.err.println("Invalid Sequence! Expected: " + (rxSequence+1) + "  Actual: " + frag.getSequence());
+			return;
+		}
+		rxSequence = frag.getSequence();
+		sender.send(new Acknowledge(rxSequence));
+		fragmentedBuffer.add(frag);
+		frag = fragmentedBuffer.get(0);
+		ByteBuffer data = frag.getPacketData();
+		data.position(4);
+		int size = Packet.getNetInt(data);
+		int index = data.remaining();
+		for (int i = 1; i < fragmentedBuffer.size() && index < size; i++)
+			index += fragmentedBuffer.get(i).getPacketData().limit()-4;
+		if (index == size)
+			processFragmentedReady(size);
+	}
+	
+	private void processFragmentedReady(int size) {
+		ByteBuffer combined = ByteBuffer.allocate(size);
+		while (combined.hasRemaining()) {
+			ByteBuffer packet = fragmentedBuffer.get(0).getPacketData();
+			packet.position(combined.position() == 0 ? 8 : 4);
+			combined.put(packet);
+			fragmentedBuffer.remove(0);
+		}
+		combined.flip();
+		process(combined);
 	}
 	
 	private void onOutOfOrder(OutOfOrder ooo) {
