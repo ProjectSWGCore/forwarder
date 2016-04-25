@@ -25,47 +25,36 @@
 * along with Holocore.  If not, see <http://www.gnu.org/licenses/>.                *
 *                                                                                  *
 ***********************************************************************************/
-package com.projectswg.networking.swg;
+package com.projectswg.utilities;
 
-import java.nio.ByteBuffer;
+import java.util.concurrent.ThreadFactory;
 
-import com.projectswg.networking.SWGPacket;
-
-
-public class ErrorMessage extends SWGPacket {
+public class ThreadUtilities {
 	
-	public static final int CRC = com.projectswg.networking.encryption.CRC.getCrc("ErrorMessage");
+	public static ThreadFactory newThreadFactory(String pattern) {
+		return new CustomThreadFactory(pattern);
+	}
 	
-	private String type;
-	private String message;
-	private boolean fatal;
-	
-	public ErrorMessage() {
+	private static class CustomThreadFactory implements ThreadFactory {
+		
+		private final String pattern;
+		private int counter;
+		
+		public CustomThreadFactory(String pattern) {
+			this.pattern = pattern;
+			this.counter = 0;
+		}
+		
+		@Override
+		public Thread newThread(Runnable r) {
+			String name;
+			if (pattern.contains("%d"))
+				name = String.format(pattern, counter++);
+			else
+				name = pattern;
+			return new Thread(r, name);
+		}
 		
 	}
 	
-	public ErrorMessage(String type, String message, boolean fatal) {
-		this.type = type;
-		this.message = message;
-		this.fatal = fatal;
-	}
-	
-	public void decode(ByteBuffer data) {
-		if (!super.decode(data, CRC))
-			return;
-		type = getAscii(data);
-		message = getAscii(data);
-		fatal = getBoolean(data);
-	}
-	
-	public ByteBuffer encode() {
-		int length = 11 + type.length() + message.length();
-		ByteBuffer data = ByteBuffer.allocate(length);
-		addShort(data, 3);
-		addInt(  data, CRC);
-		addAscii(data, type);
-		addAscii(data, message);
-		addBoolean(data, fatal);
-		return data;
-	}
 }

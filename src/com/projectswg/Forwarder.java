@@ -19,14 +19,15 @@ import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 
 import com.projectswg.Connections.ConnectionCallback;
-import com.projectswg.ServerConnection.ConnectionStatus;
+import com.projectswg.resources.ServerConnectionStatus;
+import com.projectswg.utilities.Log;
 
 public class Forwarder extends Application implements ConnectionCallback {
 	
 	private static final String [] DATA_NAMES = new String[]{"B", "KB", "MB", "GB", "TB"};
 	
+	private final HolocoreConnection connections;
 	private final ExecutorService executor;
-	private final Connections connections;
 	private final TextField usernameField;
 	private final TextField passwordField;
 	private final TextField serverIpField;
@@ -35,10 +36,8 @@ public class Forwarder extends Application implements ConnectionCallback {
 	private final Text serverStatusText;
 	private final Text clientConnectionText;
 	private final Text clientConnectionPort;
-	private final Text serverRxText;
-	private final Text serverTxText;
-	private final Text clientRxText;
-	private final Text clientTxText;
+	private final Text serverToClientText;
+	private final Text clientToServerText;
 	
 	public static void main(String [] args) {
 		launch(args);
@@ -46,35 +45,30 @@ public class Forwarder extends Application implements ConnectionCallback {
 	
 	public Forwarder() {
 		executor = Executors.newSingleThreadExecutor();
-		connections = new Connections();
 		usernameField = new TextField("");
 		passwordField = new PasswordField();
-		serverIpField = new TextField(connections.getRemoteAddress().getHostAddress());
-		serverPortField = new TextField(Integer.toString(connections.getRemotePort()));
+		serverIpField = new TextField();
+		serverPortField = new TextField();
 		serverConnectionText = new Text(getConnectionStatus(false));
-		serverStatusText = new Text(ConnectionStatus.DISCONNECTED.name());
+		serverStatusText = new Text(ServerConnectionStatus.DISCONNECTED.name());
 		clientConnectionText = new Text(getConnectionStatus(false));
-		clientConnectionPort = new Text(Integer.toString(connections.getLoginPort()));
-		serverRxText = new Text(getByteName(connections.getTcpRecv()));
-		serverTxText = new Text(getByteName(connections.getTcpSent()));
-		clientRxText = new Text(getByteName(connections.getUdpRecv()));
-		clientTxText = new Text(getByteName(connections.getUdpSent()));
+		clientConnectionPort = new Text();
+		serverToClientText = new Text("0");
+		clientToServerText = new Text("0");
+		connections = new HolocoreConnection();
 		updateConnection(serverConnectionText, false);
 		updateConnection(clientConnectionText, false);
 		usernameField.promptTextProperty().setValue("Username");
 		passwordField.promptTextProperty().setValue("Password");
-		usernameField.textProperty().addListener((event, oldValue, newValue) -> connections.getInterceptorProperties().setUsername(newValue));
-		passwordField.textProperty().addListener((event, oldValue, newValue) -> connections.getInterceptorProperties().setPassword(newValue));
 		serverIpField.setOnKeyPressed((event) -> updateServerIp());
 		serverPortField.setOnKeyPressed((event) -> updateServerIp());
-		connections.setCallback(this);
 	}
 	
 	@Override
-	public void onServerStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status) {
+	public void onServerStatusChanged(ServerConnectionStatus oldStatus, ServerConnectionStatus status) {
 		Platform.runLater(() -> {
 			serverStatusText.setText(status.name().replace('_', ' '));
-			updateConnection(serverConnectionText, status == ConnectionStatus.CONNECTED);
+			updateConnection(serverConnectionText, status == ServerConnectionStatus.CONNECTED);
 		});
 	}
 	
@@ -89,23 +83,13 @@ public class Forwarder extends Application implements ConnectionCallback {
 	}
 	
 	@Override
-	public void onDataRecvTcp(byte[] data) {
-		Platform.runLater(() -> serverRxText.setText(getByteName(connections.getTcpRecv())));
+	public void onDataClientToServer(byte[] data) {
+		Platform.runLater(() -> clientToServerText.setText(getByteName(connections.getClientToServerCount())));
 	}
 	
 	@Override
-	public void onDataSentTcp(byte[] data) {
-		Platform.runLater(() -> serverTxText.setText(getByteName(connections.getTcpSent())));
-	}
-	
-	@Override
-	public void onDataRecvUdp(byte[] data) {
-		Platform.runLater(() -> clientRxText.setText(getByteName(connections.getUdpRecv())));
-	}
-	
-	@Override
-	public void onDataSentUdp(byte[] data) {
-		Platform.runLater(() -> clientTxText.setText(getByteName(connections.getUdpSent())));
+	public void onDataServerToClient(byte[] data) {
+		Platform.runLater(() -> serverToClientText.setText(getByteName(connections.getServerToClientCount())));
 	}
 	
 	private void updateConnection(Text t, boolean status) {
@@ -120,21 +104,21 @@ public class Forwarder extends Application implements ConnectionCallback {
 				int port = Integer.parseInt(serverPortField.getText());
 				connections.setRemote(addr, port);
 			} catch (UnknownHostException e) {
-				System.err.println("Unknown IP: " + serverIpField.getText());
+				Log.err(this, "Unknown IP: " + serverIpField.getText());
 			} catch (NumberFormatException e) {
-				System.err.println("Invalid Port: " + serverPortField.getText());
+				Log.err(this, "Invalid Port: " + serverPortField.getText());
 			}
 		});
 	}
 	
 	@Override
 	public void start(Stage primaryStage) throws Exception {
-		connections.initialize();
+		initializeConnections();
 		clientConnectionPort.setText(Integer.toString(connections.getLoginPort()));
 		GridPane root = new GridPane();
 		setupGridPane(root);
 		Scene scene = new Scene(root, 400, 160);
-		primaryStage.setTitle("Holocore Forwarder");
+		primaryStage.setTitle("Holocore Forwarder [" + Connections.VERSION + "]");
 		primaryStage.setScene(scene);
 		primaryStage.setMinWidth(scene.getWidth());
 		primaryStage.setMinHeight(scene.getHeight());
@@ -146,14 +130,25 @@ public class Forwarder extends Application implements ConnectionCallback {
 		primaryStage.setOnCloseRequest(new EventHandler<WindowEvent>() {
 			public void handle(WindowEvent we) {
 				try {
-					connections.terminate();
+					connections.stop();
 				} catch (Exception e) {
-					e.printStackTrace();
+					Log.err(this, e);
 				}
 				primaryStage.close();
-				System.exit(0);
 			}
 		});
+	}
+	
+	private void initializeConnections() {
+		connections.start();
+		serverIpField.setText(connections.getRemoteAddress().getHostAddress());
+		serverPortField.setText(Integer.toString(connections.getRemotePort()));
+		clientConnectionPort.setText(Integer.toString(connections.getLoginPort()));
+		usernameField.setText(connections.getInterceptorProperties().getUsername());
+		passwordField.setText(connections.getInterceptorProperties().getPassword());
+		usernameField.textProperty().addListener((event, oldValue, newValue) -> connections.getInterceptorProperties().setUsername(newValue));
+		passwordField.textProperty().addListener((event, oldValue, newValue) -> connections.getInterceptorProperties().setPassword(newValue));
+		connections.setCallback(this);
 	}
 	
 	private void setupGridPane(GridPane root) {
@@ -171,14 +166,10 @@ public class Forwarder extends Application implements ConnectionCallback {
 		root.add(new Text("Client Connection:"), 0, 3, 2, 1);
 		root.add(clientConnectionText,	2, 3, 2, 1);
 		root.add(clientConnectionPort,	3, 3, 1, 1);
-		root.add(new Text("Sent"),		1, 4, 1, 1);
-		root.add(new Text("Recv"),		2, 4, 1, 1);
-		root.add(new Text("TCP"),		0, 5, 1, 1);
-		root.add(serverTxText,			1, 5, 1, 1);
-		root.add(serverRxText,			2, 5, 1, 1);
-		root.add(new Text("UDP"),		0, 6, 1, 1);
-		root.add(clientTxText,			1, 6, 1, 1);
-		root.add(clientRxText,			2, 6, 1, 1);
+		root.add(new Text("Server->Client"), 0, 4, 2, 1);
+		root.add(serverToClientText,	2, 4, 2, 1);
+		root.add(new Text("Client->Server"), 0, 5, 2, 1);
+		root.add(clientToServerText,	2, 5, 2, 1);
 	}
 	
 	private void addColumnConstraint(GridPane root, double width) {

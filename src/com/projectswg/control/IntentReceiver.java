@@ -25,47 +25,17 @@
 * along with Holocore.  If not, see <http://www.gnu.org/licenses/>.                *
 *                                                                                  *
 ***********************************************************************************/
-package com.projectswg.networking;
-
-import java.nio.ByteBuffer;
+package com.projectswg.control;
 
 
-public class SWGPacket extends Packet {
+public interface IntentReceiver {
 	
-	private ByteBuffer data = null;
-	private int opcode = 0;
-
-	public void setSWGOpcode(int opcode) {
-		this.opcode = opcode;
-	}
-	
-	public int getSWGOpcode() {
-		return opcode;
-	}
-	
-	public boolean decode(ByteBuffer data, int crc) {
-		this.data = data;
-		super.decode(data);
-		data.position(2);
-		setSWGOpcode(getInt(data));
-		return getSWGOpcode() == crc;
-	}
-	
-	public void decode(ByteBuffer data) {
-		this.data = data;
-		if (data.array().length < 6)
-			return;
-		data.position(2);
-		setSWGOpcode(getInt(data));
-		data.position(0);
-	}
-	
-	public ByteBuffer encode() {
-		return data;
-	}
-	
-	public ByteBuffer getData() {
-		return data;
-	}
+	/**
+	 * This function will be called if an intent is broadcasted and this
+	 * manager is listening for it, or if this manager is specifically given
+	 * this intent.
+	 * @param i the intent received
+	 */
+	public void onIntentReceived(Intent i);
 	
 }

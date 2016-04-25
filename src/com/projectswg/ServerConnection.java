@@ -3,9 +3,11 @@ package com.projectswg;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SocketChannel;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.Locale;
 import java.util.Queue;
@@ -14,25 +16,42 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.projectswg.networking.encryption.Compression;
+import resources.network.NetBufferStream;
+import network.PacketType;
+import network.packets.swg.SWGPacket;
+import network.packets.swg.holo.HoloConnectionStarted;
+import network.packets.swg.holo.HoloConnectionStopped;
+import network.packets.swg.holo.HoloSetProtocolVersion;
+import network.packets.swg.zone.object_controller.ObjectController;
 
-public class ServerConnection {
+import com.projectswg.control.Intent;
+import com.projectswg.control.Manager;
+import com.projectswg.intents.ClientConnectionChangedIntent;
+import com.projectswg.intents.ClientToServerPacketIntent;
+import com.projectswg.intents.ServerConnectionChangedIntent;
+import com.projectswg.intents.ServerToClientPacketIntent;
+import com.projectswg.networking.encryption.Compression;
+import com.projectswg.resources.ClientConnectionStatus;
+import com.projectswg.resources.ServerConnectionStatus;
+import com.projectswg.utilities.IntentChain;
+import com.projectswg.utilities.Log;
+import com.projectswg.utilities.ThreadUtilities;
+
+public class ServerConnection extends Manager {
 	
-	private static final int DEFAULT_BUFFER = 4096;
+	private static final String PROTOCOL = "2016-04-13";
 	
 	private final Object bufferMutex;
 	private final Object socketMutex;
 	private final Queue<byte []> outQueue;
-	private ExecutorService processorExecutor;
-	private ExecutorService callbackExecutor;
+	private final IntentChain recvIntentChain;
 	private ExecutorService connectionExecutor;
+	private ExecutorService processExecutor;
 	private AtomicBoolean running;
-	private ByteBuffer buffer;
-	private long lastBufferSizeModification;
+	private NetBufferStream bufferStream;
 	private SocketChannel socket;
 	private boolean connected;
-	private ServerCallback callback;
-	private ConnectionStatus status;
+	private ServerConnectionStatus status;
 	private InetAddress addr;
 	private int port;
 	
@@ -40,39 +59,31 @@ public class ServerConnection {
 		this.bufferMutex = new Object();
 		this.socketMutex = new Object();
 		this.outQueue = new LinkedList<>();
-		this.buffer = ByteBuffer.allocate(DEFAULT_BUFFER).order(ByteOrder.LITTLE_ENDIAN);
+		this.recvIntentChain = new IntentChain();
+		this.bufferStream = new NetBufferStream();
 		this.running = new AtomicBoolean(false);
-		lastBufferSizeModification = System.nanoTime();
 		this.addr = addr;
 		this.port = port;
-		status = ConnectionStatus.DISCONNECTED;
+		status = ServerConnectionStatus.DISCONNECTED;
 		socket = null;
-		callback = null;
 		connected = false;
 		stop();
 	}
 	
-	public void start() {
-		if (running.get())
-			return;
-		processorExecutor = Executors.newSingleThreadExecutor();
-		connectionExecutor = Executors.newSingleThreadExecutor();
-		callbackExecutor = Executors.newSingleThreadExecutor();
-		running.set(true);
-		connectionExecutor.execute(() -> run());
+	@Override
+	public boolean initialize() {
+		registerForIntent(ClientConnectionChangedIntent.TYPE);
+		registerForIntent(ClientToServerPacketIntent.TYPE);
+		reset();
+		return super.initialize();
 	}
 	
-	public void stop() {
-		if (!running.get())
-			return;
-		running.set(false);
-		disconnect(ConnectionStatus.DISCONNECTED);
-		safeShutdown(connectionExecutor);
-		safeShutdown(processorExecutor);
-		safeShutdown(callbackExecutor);
-		processorExecutor = null;
-		connectionExecutor = null;
-		callbackExecutor = null;
+	@Override
+	public void onIntentReceived(Intent i) {
+		if (i instanceof ClientConnectionChangedIntent)
+			processClientConnectionChanged((ClientConnectionChangedIntent) i);
+		else if (i instanceof ClientToServerPacketIntent)
+			send(((ClientToServerPacketIntent) i).getData());
 	}
 	
 	public void setRemoteAddress(InetAddress addr, int port) {
@@ -80,15 +91,15 @@ public class ServerConnection {
 		this.port = port;
 	}
 	
-	public void setCallback(ServerCallback callback) {
-		this.callback = callback;
-	}
-	
 	public boolean send(byte [] raw) {
-		if (!connected) {
+		if (status != ServerConnectionStatus.CONNECTED) {
 			outQueue.add(raw);
 			return false;
 		}
+		return sendForce(raw);
+	}
+	
+	private boolean sendForce(byte [] raw) {
 		int decompressedLength = raw.length;
 		boolean compressed = raw.length >= 16;
 		if (compressed) {
@@ -105,48 +116,124 @@ public class ServerConnection {
 		data.put(raw);
 		data.flip();
 		try {
-			socket.write(data);
-			return true;
+			if (socket != null) {
+				socket.write(data);
+				return true;
+			}
 		} catch (IOException e) {
-			e.printStackTrace();
-			disconnect(ConnectionStatus.OTHER_SIDE_TERMINATED);
-			return false;
+			Log.err(this, e);
+			disconnect(ServerConnectionStatus.OTHER_SIDE_TERMINATED);
+		}
+		return false;
+	}
+	
+	private void processClientConnectionChanged(ClientConnectionChangedIntent ccci) {
+		switch (ccci.getStatus()) {
+			case LOGIN_CONNECTED:
+				if (ccci.getOldStatus() != ClientConnectionStatus.DISCONNECTED || running.getAndSet(true))
+					break;
+				startServer();
+				break;
+			case DISCONNECTED:
+				if (ccci.getOldStatus() == ClientConnectionStatus.DISCONNECTED || !running.getAndSet(false))
+					break;
+				stopServer();
+				break;
+			default:
+				break;
 		}
 	}
 	
+	private void startServer() {
+		connectionExecutor = Executors.newSingleThreadExecutor(ThreadUtilities.newThreadFactory("server-conn-connection"));
+		processExecutor = Executors.newSingleThreadExecutor(ThreadUtilities.newThreadFactory("server-conn-processor"));
+		connectionExecutor.execute(() -> run());
+	}
+	
+	private void stopServer() {
+		running.set(false);
+		disconnect(ServerConnectionStatus.DISCONNECTED);
+		safeShutdown(connectionExecutor);
+		safeShutdown(processExecutor);
+		connectionExecutor = null;
+		processExecutor = null;
+	}
+	
 	private boolean processPacket() {
-		byte bitmask = buffer.get();
-		short messageLength = buffer.getShort();
-		short decompressedLength = buffer.getShort();
-		if (buffer.remaining() < messageLength) {
-			buffer.position(buffer.position() - 5);
+		bufferStream.mark();
+		byte bitmask = bufferStream.getByte();
+		short messageLength = bufferStream.getShort();
+		short decompressedLength = bufferStream.getShort();
+		if (bufferStream.remaining() < messageLength) {
+			bufferStream.rewind();
 			return false;
 		}
-		byte [] message = new byte[messageLength];
-		buffer.get(message);
-		final byte [] packet;
+		byte [] message = bufferStream.getArray(messageLength);
 		if ((bitmask & 1) != 0) // Compressed
-			packet = Compression.decompress(message, decompressedLength);
-		else
-			packet = message;
-		if (callback != null && callbackExecutor != null)
-			callbackExecutor.execute(() -> callback.onData(packet));
+			message = Compression.decompress(message, decompressedLength);
+		if (message.length < 6)
+			return true;
+		processPacketToSwg(message);
 		return true;
+	}
+	
+	private void processPacketToSwg(byte [] packet) {
+		ByteBuffer data = ByteBuffer.wrap(packet).order(ByteOrder.LITTLE_ENDIAN);
+		int crc = data.getInt(2);
+		SWGPacket swg;
+		if (crc == 0x80CE5E46)
+			swg = ObjectController.decodeController(data);
+		else {
+			swg = PacketType.getForCrc(crc);
+			if (swg != null)
+				swg.decode(data);
+		}
+		if (swg != null)
+			processPacket(swg, packet);
+		else
+			Log.err(this, "Incoming packet is null! Data: " + Arrays.toString(packet));
+	}
+	
+	private void processPacket(SWGPacket packet, byte [] raw) {
+		recvIntentChain.broadcastAfter(new ServerToClientPacketIntent(packet, raw), getIntentManager());
+		if (packet instanceof HoloConnectionStarted) {
+			updateStatus(ServerConnectionStatus.CONNECTED);
+			while (!outQueue.isEmpty())
+				send(outQueue.poll());
+			Log.out(this, "Server connected");
+		} else if (packet instanceof HoloConnectionStopped) {
+			switch (((HoloConnectionStopped) packet).getReason()) {
+				case INVALID_PROTOCOL:
+					disconnect(ServerConnectionStatus.DISCONNECT_INVALID_PROTOCOL);
+					break;
+				default:
+					disconnect(ServerConnectionStatus.DISCONNECTED);
+					break;
+			}
+			stopServer();
+		}
 	}
 	
 	private void run() {
 		ByteBuffer buffer = ByteBuffer.allocateDirect(4*1024);
+		Log.out(this, "Started ServerConnection");
+		int loopAttempts = 0;
 		try {
 			while (running.get()) {
-				if (!connected)
+				if (!connected) {
 					loopDisconnected();
-				else
+					loopAttempts++;
+					if (loopAttempts >= 3)
+						stopServer();
+				} else {
 					read(buffer);
+					loopAttempts = 0;
+				}
 			}
 		} catch (InterruptedException e) {
 			
 		} catch (Exception e) {
-			e.printStackTrace();
+			Log.err(this, e);
 		}
 	}
 	
@@ -161,9 +248,9 @@ public class ServerConnection {
 			}
 		}
 		if (connected) {
-			while (!outQueue.isEmpty())
-				send(outQueue.poll());
-			updateStatus(ConnectionStatus.CONNECTED);
+			Log.out(this, "Server connecting...");
+			updateStatus(ServerConnectionStatus.CONNECTING);
+			sendForce(new HoloSetProtocolVersion(PROTOCOL).encode().array());
 		} else
 			Thread.sleep(connecting ? 5 : 1000);
 		return connected;
@@ -175,91 +262,56 @@ public class ServerConnection {
 			data.limit(data.capacity());
 			int n = socket.read(data);
 			if (n < 0) {
-				disconnect(ConnectionStatus.OTHER_SIDE_TERMINATED);
+				disconnect(ServerConnectionStatus.OTHER_SIDE_TERMINATED);
 			} else if (n > 0) {
 				data.flip();
 				addToBuffer(data);
 			}
 		} catch (IOException e) {
 			if (e.getMessage() == null)
-				disconnect(ConnectionStatus.DISCONNECT_UNKNOWN_REASON);
+				disconnect(ServerConnectionStatus.DISCONNECT_UNKNOWN_REASON);
 			else
 				disconnect(getReason(e.getMessage()));
 		} catch (Exception e) {
-			System.err.println("Failed to process buffer!");
-			e.printStackTrace();
-			System.exit(0);
+			Log.err(this, "Failed to process buffer!");
+			Log.err(this, e);
+			disconnect(ServerConnectionStatus.DISCONNECT_INTERNAL_ERROR);
 		}
 	}
 	
 	private void addToBuffer(ByteBuffer data) {
 		if (!running.get())
 			return;
-		synchronized (bufferMutex) {
-			if (data.remaining() > buffer.remaining()) { // Increase size
-				int nCapacity = buffer.capacity() * 2;
-				while (nCapacity < buffer.position()+data.remaining())
-					nCapacity *= 2;
-				ByteBuffer bb = ByteBuffer.allocate(nCapacity).order(ByteOrder.LITTLE_ENDIAN);
-				buffer.flip();
-				bb.put(buffer);
-				bb.put(data);
-				buffer = bb;
-				lastBufferSizeModification = System.nanoTime();
-			} else {
-				buffer.put(data);
-				if (buffer.position() < buffer.capacity()/4 && data.limit() != data.capacity() && (System.nanoTime()-lastBufferSizeModification) >= 1E9)
-					shrinkBuffer();
-			}
-		}
+		bufferStream.write(data);
 		if (running.get())
-			processorExecutor.execute(() -> process());
-	}
-	
-	private void shrinkBuffer() {
-		synchronized (bufferMutex) {
-			int nCapacity = DEFAULT_BUFFER;
-			while (nCapacity < buffer.position())
-				nCapacity *= 2;
-			if (nCapacity >= buffer.capacity())
-				return;
-			ByteBuffer bb = ByteBuffer.allocate(nCapacity).order(ByteOrder.LITTLE_ENDIAN);
-			buffer.flip();
-			bb.put(buffer);
-			buffer = bb;
-			lastBufferSizeModification = System.nanoTime();
-		}
+			processExecutor.execute(() -> process());
 	}
 	
 	private void process() {
 		synchronized (bufferMutex) {
-			buffer.flip();
-			while (buffer.remaining() >= 5) {
+			while (bufferStream.remaining() >= 5) {
 				if (!processPacket())
 					break;
 			}
-			buffer.compact();
+			bufferStream.compact();
 		}
 	}
 	
 	private void reset() {
-		synchronized (bufferMutex) {
-			buffer = ByteBuffer.allocate(DEFAULT_BUFFER).order(ByteOrder.LITTLE_ENDIAN);
-			lastBufferSizeModification = System.nanoTime();
-		}
+		bufferStream.reset();
 	}
 	
 	private boolean connect() {
 		synchronized (socketMutex) {
 			try {
 				if (socket != null)
-					disconnect(ConnectionStatus.DISCONNECTED);
+					disconnect(ServerConnectionStatus.DISCONNECTED);
 				socket = SocketChannel.open(new InetSocketAddress(addr, port));
 				reset();
 				return true;
 			} catch (IOException e) {
 				if (e.getMessage() == null)
-					disconnect(ConnectionStatus.DISCONNECT_UNKNOWN_REASON);
+					disconnect(ServerConnectionStatus.DISCONNECT_UNKNOWN_REASON);
 				else
 					disconnect(getReason(e.getMessage()));
 				return false;
@@ -267,31 +319,46 @@ public class ServerConnection {
 		}
 	}
 	
-	private boolean disconnect(ConnectionStatus status) {
+	private boolean disconnect(ServerConnectionStatus status) {
 		synchronized (socketMutex) {
+			updateStatus(status);
 			if (!connected)
 				return true;
 			if (socket == null)
 				return true;
+			Log.out(this, "Server disconnected");
 			connected = false;
-			updateStatus(status);
 			try {
 				socket.close();
 				socket = null;
 				reset();
 				return true;
 			} catch (IOException e) {
-				e.printStackTrace();
+				Log.err(this, e);
 				return false;
 			}
 		}
 	}
 	
-	private void updateStatus(ConnectionStatus status) {
-		ConnectionStatus old = this.status;
-		this.status = status;
-		if (callback != null && callbackExecutor != null && old != status)
-			callbackExecutor.execute(() -> callback.onStatusChanged(old, status) );
+	private void updateStatus(ServerConnectionStatus status) {
+		ServerConnectionStatus old = this.status;
+		if (old != status) {
+			this.status = status;
+			ServerConnectionChangedIntent i = new ServerConnectionChangedIntent(old, status);
+			try {
+				if (socket != null) {
+					SocketAddress source = socket.getLocalAddress();
+					SocketAddress destination = socket.getRemoteAddress();
+					if (source instanceof InetSocketAddress)
+						i.setSource((InetSocketAddress) source);
+					if (destination instanceof InetSocketAddress)
+						i.setDestination((InetSocketAddress) destination);
+				}
+			} catch (IOException e) {
+				Log.err(this, e);
+			}
+			recvIntentChain.broadcastAfter(i, getIntentManager());
+		}
 	}
 	
 	private byte createBitmask(boolean compressed, boolean swg) {
@@ -301,21 +368,21 @@ public class ServerConnection {
 		return bitfield;
 	}
 	
-	private ConnectionStatus getReason(String message) {
+	private ServerConnectionStatus getReason(String message) {
 		if (message.toLowerCase(Locale.US).contains("broken pipe"))
-			return ConnectionStatus.BROKEN_PIPE;
+			return ServerConnectionStatus.BROKEN_PIPE;
 		if (message.toLowerCase(Locale.US).contains("connection reset"))
-			return ConnectionStatus.CONNECTION_RESET;
+			return ServerConnectionStatus.CONNECTION_RESET;
 		if (message.toLowerCase(Locale.US).contains("connection refused"))
-			return ConnectionStatus.CONNECTION_REFUSED;
+			return ServerConnectionStatus.CONNECTION_REFUSED;
 		if (message.toLowerCase(Locale.US).contains("address in use"))
-			return ConnectionStatus.ADDR_IN_USE;
+			return ServerConnectionStatus.ADDR_IN_USE;
 		if (message.toLowerCase(Locale.US).contains("socket closed"))
-			return ConnectionStatus.DISCONNECTED;
+			return ServerConnectionStatus.DISCONNECTED;
 		if (message.toLowerCase(Locale.US).contains("no route to host"))
-			return ConnectionStatus.NO_ROUTE_TO_HOST;
-		System.err.println("Unknown reason: " + message);
-		return ConnectionStatus.DISCONNECT_UNKNOWN_REASON;
+			return ServerConnectionStatus.NO_ROUTE_TO_HOST;
+		Log.err(this, "Unknown reason: " + message);
+		return ServerConnectionStatus.DISCONNECT_UNKNOWN_REASON;
 	}
 	
 	private boolean safeShutdown(ExecutorService ex) {
@@ -331,23 +398,6 @@ public class ServerConnection {
 		} catch (InterruptedException e) {
 			return false;
 		}
-	}
-	
-	public interface ServerCallback {
-		void onStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status);
-		void onData(byte [] data);
-	}
-	
-	public enum ConnectionStatus {
-		CONNECTED,
-		BROKEN_PIPE,
-		CONNECTION_RESET,
-		CONNECTION_REFUSED,
-		ADDR_IN_USE,
-		OTHER_SIDE_TERMINATED,
-		NO_ROUTE_TO_HOST,
-		DISCONNECT_UNKNOWN_REASON,
-		DISCONNECTED
 	}
 	
 }

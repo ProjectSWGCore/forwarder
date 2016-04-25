@@ -3,9 +3,9 @@ package com.projectswg.networking;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-import com.projectswg.networking.resources.Galaxy;
-import com.projectswg.networking.swg.LoginClientId;
-import com.projectswg.networking.swg.LoginClusterStatus;
+import resources.Galaxy;
+import network.packets.swg.login.LoginClientId;
+import network.packets.swg.login.LoginClusterStatus;
 
 public class NetInterceptor {
 	
@@ -47,9 +47,6 @@ public class NetInterceptor {
 		switch (bb.getInt(2)) {
 			case 0x3436AEB6:
 				return getServerList(bb);
-			case 0x3AE6DFAE: // CmdStartScene
-				this.data.setZoning(true);
-				return data;
 			default:
 				return data;
 		}

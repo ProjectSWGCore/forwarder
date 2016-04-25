@@ -6,8 +6,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import network.packets.swg.login.ServerId;
+import network.packets.swg.login.ServerString;
+import network.packets.swg.zone.HeartBeat;
+
+import com.projectswg.control.Intent;
+import com.projectswg.control.Service;
+import com.projectswg.intents.ClientConnectionChangedIntent;
+import com.projectswg.intents.ClientSonyPacketIntent;
+import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.Packet;
 import com.projectswg.networking.UDPServer.UDPPacket;
@@ -23,51 +34,107 @@ import com.projectswg.networking.soe.OutOfOrder;
 import com.projectswg.networking.soe.ServerNetworkStatusUpdate;
 import com.projectswg.networking.soe.SessionRequest;
 import com.projectswg.networking.soe.SessionResponse;
-import com.projectswg.networking.swg.ServerId;
-import com.projectswg.networking.swg.ServerString;
+import com.projectswg.networking.soe.Disconnect.DisconnectReason;
+import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.utilities.ByteUtilities;
+import com.projectswg.utilities.IntentChain;
+import com.projectswg.utilities.Log;
 
-public class ClientReceiver {
+public class ClientReceiver extends Service {
 	
 	private static final int MAX_PACKET_SIZE = 496;
-	
+	private static final int GALACTIC_BASE_TIME = 1323043200;
+
 	private final NetInterceptor interceptor;
 	private final AtomicLong lastPacket;
 	private final List<Fragmented> fragmentedBuffer;
+	private final IntentChain recvIntentChain;
+	private final IntentChain stateIntentChain;
+	private final boolean timeout;
+	private ScheduledExecutorService pinger;
 	private ExecutorService executor;
 	private ClientSender sender;
-	private ClientReceiverCallback callback;
-	private ConnectionState state;
+	private ClientConnectionStatus status;
 	private short rxSequence;
 	private int port;
 	private boolean zone;
 	
-	public ClientReceiver(NetInterceptor interceptor) {
+	public ClientReceiver(NetInterceptor interceptor, boolean timeout) {
 		this.interceptor = interceptor;
 		this.lastPacket = new AtomicLong(0);
 		this.fragmentedBuffer = new ArrayList<>();
-		setConnectionState(ConnectionState.DISCONNECTED);
-		sender = null;
-		callback = null;
+		this.recvIntentChain = new IntentChain();
+		this.stateIntentChain = new IntentChain();
+		this.timeout = timeout;
+	}
+	
+	@Override
+	public boolean initialize() {
+		registerForIntent(ClientConnectionChangedIntent.TYPE);
+		registerForIntent(ClientSonyPacketIntent.TYPE);
 		rxSequence = -1;
+		lastPacket.set(0);
+		fragmentedBuffer.clear();
+		recvIntentChain.reset();
+		stateIntentChain.reset();
 		port = 0;
 		zone = false;
+		status = ClientConnectionStatus.DISCONNECTED;
+		return super.initialize();
 	}
 	
-	public void start() {
+	@Override
+	public boolean start() {
 		executor = Executors.newSingleThreadExecutor();
+		pinger = Executors.newSingleThreadScheduledExecutor();
+		pinger.scheduleAtFixedRate(()->ping(), 0, 1000, TimeUnit.MILLISECONDS);
+		reset();
+		return super.start();
 	}
 	
-	public void stop() {
-		executor.shutdownNow();
+	@Override
+	public boolean stop() {
+		if (executor != null)
+			executor.shutdownNow();
+		if (pinger != null)
+			pinger.shutdownNow();
+		try {
+			if (executor != null)
+				executor.awaitTermination(3, TimeUnit.SECONDS);
+			if (pinger != null)
+				pinger.awaitTermination(3, TimeUnit.SECONDS);
+		} catch (InterruptedException e) {
+			Log.err(this, e);
+		}
+		setConnectionState(ClientConnectionStatus.DISCONNECTED);
+		return super.stop();
+	}
+	
+	@Override
+	public void onIntentReceived(Intent i) {
+		if (i instanceof ClientConnectionChangedIntent) {
+			reset();
+		} else if (i instanceof ClientSonyPacketIntent) {
+			Packet p = ((ClientSonyPacketIntent) i).getPacket();
+			if (p instanceof SessionRequest)
+				onSessionRequest((SessionRequest) p);
+			else if (p instanceof MultiPacket)
+				onMultiPacket((MultiPacket) p);
+			else if (p instanceof Disconnect)
+				onDisconnect((Disconnect) p);
+			else if (p instanceof KeepAlive)
+				onKeepAlive((KeepAlive) p);
+			else if (p instanceof ClientNetworkStatusUpdate)
+				onClientNetwork((ClientNetworkStatusUpdate) p);
+			else if (p instanceof DataChannelA)
+				onDataChannel((DataChannelA) p);
+			else if (p instanceof Fragmented)
+				onFragmented((Fragmented) p);
+		}
 	}
 	
 	public void setClientSender(ClientSender sender) {
 		this.sender = sender;
-	}
-	
-	public void setReceiverCallback(ClientReceiverCallback callback) {
-		this.callback = callback;
 	}
 	
 	public void reset() {
@@ -81,99 +148,84 @@ public class ClientReceiver {
 	public void onPacket(boolean zone, UDPPacket packet) {
 		if (packet.getData().length < 2)
 			return;
+		lastPacket.set(System.nanoTime());
 		if (zone && packet.getData().length == 4) { // Ping
 			sender.sendRaw(packet.getPort(), packet.getData());
-			lastPacket.set(System.nanoTime());
-			if (callback != null)
-				callback.onUdpRecv(zone, packet.getData());
 			return;
 		}
-		ByteBuffer data = ByteBuffer.wrap(packet.getData()).order(ByteOrder.BIG_ENDIAN);
-		short type = data.getShort(0);
-		if (type == 1) {
+		if (packet.getData()[0] == 0 && packet.getData()[1] == 1) {
+			if (sender.getConnectionId() != -1)
+				sender.send(new Disconnect(sender.getConnectionId(), DisconnectReason.APPLICATION));
 			this.zone = zone;
 			this.port = packet.getPort();
 			sender.setZone(zone);
 			sender.setPort(packet.getPort());
-			lastPacket.set(System.nanoTime());
-			process(data);
-			if (callback != null)
-				callback.onUdpRecv(zone, data.array());
+			sender.reset();
+			executor.execute(() -> process(ByteBuffer.wrap(packet.getData()).order(ByteOrder.BIG_ENDIAN)));
 		} else {
-			if (packet.getPort() != port || port == 0)
-				return;
-			lastPacket.set(System.nanoTime());
-			executor.execute(() -> {
-				ByteBuffer decoded = ByteBuffer.wrap(Encryption.decode(data.array(), 0)).order(ByteOrder.BIG_ENDIAN);
-				process(decoded);
-				if (callback != null)
-					callback.onUdpRecv(zone, decoded.array());
-			});
+			if (packet.getPort() == port)
+				executor.execute(() -> process(ByteBuffer.wrap(Encryption.decode(packet.getData(), 0)).order(ByteOrder.BIG_ENDIAN)));
 		}
 	}
 	
-	private void setConnectionState(ConnectionState state) {
-		if (this.state != state && callback != null)
-			callback.onConnectionChanged(state);
-		this.state = state;
+	private void ping() {
+		if (status == ClientConnectionStatus.DISCONNECTED || !timeout)
+			return;
+		if (getTimeSinceLastPacket() > 5000 && !interceptor.getData().isZoning())
+			setConnectionState(ClientConnectionStatus.DISCONNECTED);
+		else if (getTimeSinceLastPacket() > 30000 && interceptor.getData().isZoning())
+			setConnectionState(ClientConnectionStatus.DISCONNECTED);
+		else
+			sender.send(new HeartBeat().encode().array());
+	}
+	
+	private void setConnectionState(ClientConnectionStatus state) {
+		if (this.status != state) {
+			stateIntentChain.broadcastAfter(new ClientConnectionChangedIntent(this.status, state), getIntentManager());
+			this.status = state;
+		}
 	}
 	
 	private void process(ByteBuffer data) {
-		if (data.array().length < 2)
+		if (data.array().length < 2) {
 			return;
+		}
 		if (data.get(0) != 0) {
 			onSWGPacket(data.array());
 			return;
 		}
-		switch (data.getShort(0)) {
-			case 1: // Session Request
-				onSessionRequest(new SessionRequest(data));
-				break;
-			case 3:
-				onMultiPacket(new MultiPacket(data));
-				break;
-			case 5:
-				onDisconnect(new Disconnect(data));
-				break;
-			case 6:
-				onKeepAlive(new KeepAlive(data));
-				break;
-			case 7:
-				onClientNetwork(new ClientNetworkStatusUpdate(data));
-				break;
-			case 9:
-				onDataChannel(new DataChannelA(data));
-				break;
-			case 0x0D:
-				onFragmented(new Fragmented(data));
-				break;
-			case 17:
-				onOutOfOrder(new OutOfOrder(data));
-				break;
-			case 21:
-				onAcknowledge(new Acknowledge(data));
-				break;
+		Packet p = null;
+		switch (data.order(ByteOrder.BIG_ENDIAN).getShort(0)) {
+			case 0x01:	p = new SessionRequest(data); break;
+			case 0x03:	p = new MultiPacket(data); break;
+			case 0x05:	p = new Disconnect(data); break;
+			case 0x06:	p = new KeepAlive(data); break;
+			case 0x07:	p = new ClientNetworkStatusUpdate(data); break;
+			case 0x09:	p = new DataChannelA(data); break;
+			case 0x0D:	p = new Fragmented(data); break;
+			case 0x11:	p = new OutOfOrder(data); break;
+			case 0x15:	p = new Acknowledge(data); break;
 			default:
-				System.out.println("onPacket(addr=localhost:"+port+", type="+data.getShort(0)+", "+ByteUtilities.getHexString(data.array())+")");
+				Log.out(this, "onPacket(addr=localhost:"+port+", type="+data.getShort(0)+", "+ByteUtilities.getHexString(data.array())+")");
 				break;
 		}
+		if (p != null)
+			recvIntentChain.broadcastAfter(new ClientSonyPacketIntent(p), getIntentManager());
 	}
 	
 	private void onSessionRequest(SessionRequest request) {
-		if (callback != null && !zone)
-			callback.onDisconnected();
+		if (!zone)
+			setConnectionState(ClientConnectionStatus.DISCONNECTED);
 		if (zone) {
-			System.out.println("Zone Session Request");
-			setConnectionState(ConnectionState.ZONE_CONNECTED);
+			Log.out(this, "Zone Session Request");
+			setConnectionState(ClientConnectionStatus.ZONE_CONNECTED);
 		} else {
-			System.out.println("Login Session Request");
-			setConnectionState(ConnectionState.LOGIN_CONNECTED);
+			Log.out(this, "Login Session Request");
+			setConnectionState(ClientConnectionStatus.LOGIN_CONNECTED);
 		}
 		sender.setConnectionId(request.getConnectionID());
 		sender.send(new SessionResponse(request.getConnectionID(), 0, (byte) 2, (byte) 1, (byte) 4, MAX_PACKET_SIZE));
 		sender.send(new ServerString("ProjectSWG:1"), new ServerId(1));
-		if (callback != null && !zone)
-			callback.onConnected();
 	}
 	
 	private void onMultiPacket(MultiPacket packet) {
@@ -183,9 +235,7 @@ public class ClientReceiver {
 	}
 	
 	private void onDisconnect(Disconnect disconnect) {
-		if (callback != null)
-			callback.onDisconnected();
-		setConnectionState(ConnectionState.DISCONNECTED);
+		setConnectionState(ClientConnectionStatus.DISCONNECTED);
 		zone = false;
 	}
 	
@@ -196,7 +246,7 @@ public class ClientReceiver {
 	private void onClientNetwork(ClientNetworkStatusUpdate update) {
 		ServerNetworkStatusUpdate serverNet = new ServerNetworkStatusUpdate();
 		serverNet.setClientTickCount((short) update.getTick());
-		serverNet.setServerSyncStampLong(0);
+		serverNet.setServerSyncStampLong((int) (System.currentTimeMillis()-GALACTIC_BASE_TIME));
 		int rx = rxSequence == -1 ? 0 : rxSequence;
 		serverNet.setClientPacketsSent(rx);
 		serverNet.setClientPacketsRecv(sender.getSequence());
@@ -206,10 +256,10 @@ public class ClientReceiver {
 	}
 	
 	private void onDataChannel(DataChannelA dataChannel) {
-		if (dataChannel.getSequence() != rxSequence+1) {
+		if (dataChannel.getSequence() != (short)(rxSequence+1)) {
 			if (dataChannel.getSequence() > rxSequence)
 				sender.send(new OutOfOrder(dataChannel.getSequence()));
-			System.err.println("Invalid Sequence! Expected: " + (rxSequence+1) + "  Actual: " + dataChannel.getSequence());
+			Log.err(this, "Invalid Sequence! Expected: " + (rxSequence+1) + "  Actual: " + dataChannel.getSequence());
 			return;
 		}
 		rxSequence = dataChannel.getSequence();
@@ -220,10 +270,10 @@ public class ClientReceiver {
 	}
 	
 	private void onFragmented(Fragmented frag) {
-		if (frag.getSequence() != rxSequence+1) {
+		if (frag.getSequence() != (short)(rxSequence+1)) {
 			if (frag.getSequence() > rxSequence)
 				sender.send(new OutOfOrder(frag.getSequence()));
-			System.err.println("Invalid Sequence! Expected: " + (rxSequence+1) + "  Actual: " + frag.getSequence());
+			Log.err(this, "Invalid Sequence! Expected: " + (rxSequence+1) + "  Actual: " + frag.getSequence());
 			return;
 		}
 		rxSequence = frag.getSequence();
@@ -252,32 +302,9 @@ public class ClientReceiver {
 		process(combined);
 	}
 	
-	private void onOutOfOrder(OutOfOrder ooo) {
-		sender.onOutOfOrder(ooo.getSequence());
-	}
-	
-	private void onAcknowledge(Acknowledge ack) {
-		sender.onAcknowledge(ack.getSequence());
-	}
-	
 	private void onSWGPacket(byte [] data) {
 		data = interceptor.interceptClient(data);
-		if (callback != null)
-			callback.onPacket(data);
-	}
-	
-	public interface ClientReceiverCallback {
-		void onConnected();
-		void onDisconnected();
-		void onConnectionChanged(ConnectionState state);
-		void onPacket(byte [] data);
-		void onUdpRecv(boolean zone, byte [] data);
-	}
-	
-	public enum ConnectionState {
-		DISCONNECTED,
-		LOGIN_CONNECTED,
-		ZONE_CONNECTED
+		recvIntentChain.broadcastAfter(new ClientToServerPacketIntent(data), getIntentManager());
 	}
 	
 }

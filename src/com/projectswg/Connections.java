@@ -3,65 +3,90 @@ package com.projectswg;
 import java.net.InetAddress;
 import java.util.concurrent.atomic.AtomicLong;
 
-import com.projectswg.ClientConnection.ClientCallback;
-import com.projectswg.ServerConnection.ConnectionStatus;
-import com.projectswg.ServerConnection.ServerCallback;
-import com.projectswg.networking.NetInterceptor.InterceptorProperties;
-import com.projectswg.networking.swg.ErrorMessage;
+import network.packets.swg.ErrorMessage;
 
-public class Connections {
+import com.projectswg.control.Intent;
+import com.projectswg.control.IntentManager;
+import com.projectswg.control.Manager;
+import com.projectswg.intents.ClientConnectionChangedIntent;
+import com.projectswg.intents.ClientToServerPacketIntent;
+import com.projectswg.intents.ServerConnectionChangedIntent;
+import com.projectswg.intents.ServerToClientPacketIntent;
+import com.projectswg.networking.NetInterceptor.InterceptorProperties;
+import com.projectswg.resources.ClientConnectionStatus;
+import com.projectswg.resources.ServerConnectionStatus;
+import com.projectswg.services.PacketRecordingService;
+import com.projectswg.utilities.Log;
+
+public class Connections extends Manager {
+	
+	public static final String VERSION = "0.9.4";
 	
 	private final ServerConnection server;
 	private final ClientConnection client;
-	private final AtomicLong tcpRecv;
-	private final AtomicLong tcpSent;
-	private final AtomicLong udpRecv;
-	private final AtomicLong udpSent;
+	private final PacketRecordingService recording;
+	private final AtomicLong serverToClient;
+	private final AtomicLong clientToServer;
 	private ConnectionCallback callback;
 	private InetAddress addr;
 	private int port;
-	private int loginPort;
 	
 	public Connections() {
 		this(InetAddress.getLoopbackAddress(), 44463, 44453, true);
 	}
 	
 	public Connections(InetAddress remoteAddr, int remotePort, int loginPort, boolean timeout) {
+		setIntentManager(new IntentManager());
 		this.addr = remoteAddr;
 		this.port = remotePort;
-		this.loginPort = loginPort;
 		server = new ServerConnection(remoteAddr, remotePort);
 		client = new ClientConnection(loginPort, timeout);
-		tcpRecv = new AtomicLong(0);
-		tcpSent = new AtomicLong(0);
-		udpRecv = new AtomicLong(0);
-		udpSent = new AtomicLong(0);
+		recording = new PacketRecordingService();
+		serverToClient = new AtomicLong(0);
+		clientToServer = new AtomicLong(0);
 		callback = null;
-		setCallbacks();
+		
+		addChildService(server);
+		addChildService(client);
+		addChildService(recording);
 	}
 	
-	public void initialize() {
-		int attempts = 0;
-		while (!client.start() && attempts < 5) {
-			loginPort++;
-			client.setLoginPort(loginPort);
-			attempts++;
-		}
+	@Override
+	public boolean initialize() {
+		getIntentManager().initialize();
+		registerForIntent(ClientConnectionChangedIntent.TYPE);
+		registerForIntent(ServerConnectionChangedIntent.TYPE);
+		registerForIntent(ClientToServerPacketIntent.TYPE);
+		registerForIntent(ServerToClientPacketIntent.TYPE);
+		return super.initialize();
 	}
 	
-	public void terminate() {
-		server.stop();
-		client.stop();
+	@Override
+	public boolean terminate() {
+		boolean term = super.terminate();
+		getIntentManager().terminate();
+		return term;
 	}
 	
-	public void softTerminate() {
-		server.stop();
-		while (!client.restart()) {
-			try {
-				Thread.sleep(5);
-			} catch (InterruptedException e) {
+	@Override
+	public void onIntentReceived(Intent i) {
+		switch (i.getType()) {
+			case ClientConnectionChangedIntent.TYPE:
+				if (i instanceof ClientConnectionChangedIntent)
+					processClientStatusChanged((ClientConnectionChangedIntent) i);
 				break;
-			}
+			case ServerConnectionChangedIntent.TYPE:
+				if (i instanceof ServerConnectionChangedIntent)
+					processServerStatusChanged((ServerConnectionChangedIntent) i);
+				break;
+			case ServerToClientPacketIntent.TYPE:
+				if (i instanceof ServerToClientPacketIntent)
+					onDataServerToClient(((ServerToClientPacketIntent) i).getRawData());
+				break;
+			case ClientToServerPacketIntent.TYPE:
+				if (i instanceof ClientToServerPacketIntent)
+					onDataClientToServer(((ClientToServerPacketIntent) i).getData());
+				break;
 		}
 	}
 	
@@ -69,11 +94,11 @@ public class Connections {
 		this.callback = callback;
 	}
 	
-	public void setRemote(InetAddress addr, int port) {
+	public boolean setRemote(InetAddress addr, int port) {
 		if (this.addr.equals(addr) && this.port == port)
-			return;
-		softTerminate();
+			return false;
 		server.setRemoteAddress(addr, port);
+		return true;
 	}
 	
 	public InetAddress getRemoteAddress() {
@@ -92,48 +117,64 @@ public class Connections {
 		return client.getZonePort();
 	}
 	
-	public long getTcpRecv() {
-		return tcpRecv.get();
+	public long getServerToClientCount() {
+		return serverToClient.get();
 	}
 	
-	public long getTcpSent() {
-		return tcpSent.get();
-	}
-	
-	public long getUdpRecv() {
-		return udpRecv.get();
-	}
-	
-	public long getUdpSent() {
-		return udpSent.get();
+	public long getClientToServerCount() {
+		return clientToServer.get();
 	}
 	
 	public InterceptorProperties getInterceptorProperties() {
 		return client.getInterceptorProperties();
 	}
 	
-	private void setCallbacks() {
-		client.setCallback(new ClientCallback() {
-			public void onPacket(byte[] data) { onDataSentTcp(data); }
-			public void onUdpSent(boolean zone, byte[] data) { onDataSentUdp(data); }
-			public void onUdpRecv(boolean zone, byte[] data) { onDataRecvUdp(data); }
-			public void onDisconnected() { onClientDisconnected(); }
-			public void onConnected() { onClientConnected(); }
-		});
-		server.setCallback(new ServerCallback() {
-			public void onData(byte[] data) { onDataRecvTcp(data); }
-			public void onStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status) { onServerStatusChanged(oldStatus, status); }
-		});
+	private void processServerStatusChanged(ServerConnectionChangedIntent scci) {
+		Log.out(this, "Server Status Changed: %s -> %s", scci.getOldStatus(), scci.getStatus());
+		if (callback != null)
+			callback.onServerStatusChanged(scci.getOldStatus(), scci.getStatus());
+		if (scci.getStatus() != ServerConnectionStatus.CONNECTED && scci.getStatus() != ServerConnectionStatus.CONNECTING) {
+			if (scci.getStatus() != ServerConnectionStatus.DISCONNECT_INVALID_PROTOCOL)
+				client.send(new ErrorMessage("Connection Update", "\n" + scci.getStatus().name().replace('_', ' '), false));
+			else {
+				String error = "\nInvalid protocol version!";
+				error += "\nTry updating your launcher to the latest version.";
+				error += "\nInstalled Version: " + VERSION;
+				client.send(new ErrorMessage("Network", error, false));
+			}
+			stop();
+			terminate();
+			boolean success = false;
+			while (!success) {
+				try { Thread.sleep(5); } catch (InterruptedException e) { break; }
+				success = initialize();
+				if (!success) {
+					terminate();
+					continue;
+				}
+				success = start();
+				if (!success) {
+					stop();
+					terminate();
+				}
+			}
+		}
 	}
 	
-	private void onServerStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status) {
-		if (status != ConnectionStatus.CONNECTED) {
-			client.send(new ErrorMessage("Connection Update", "\n" + status.name().replace('_', ' '), false));
-			try { Thread.sleep(50); } catch (InterruptedException e) { }
-			softTerminate();
+	private void processClientStatusChanged(ClientConnectionChangedIntent ccci) {
+		Log.out(this, "Client Status Changed: %s -> %s", ccci.getOldStatus(), ccci.getStatus());
+		switch (ccci.getStatus()) {
+			case LOGIN_CONNECTED:
+				if (ccci.getOldStatus() == ClientConnectionStatus.DISCONNECTED)
+					onClientConnected();
+				break;
+			case DISCONNECTED:
+				if (ccci.getOldStatus() != ClientConnectionStatus.DISCONNECTED)
+					onClientDisconnected();
+				break;
+			default:
+				break;
 		}
-		if (callback != null)
-			callback.onServerStatusChanged(oldStatus, status);
 	}
 	
 	private void onClientConnected() {
@@ -143,45 +184,28 @@ public class Connections {
 	}
 	
 	private void onClientDisconnected() {
-		softTerminate();
 		if (callback != null)
 			callback.onClientDisconnected();
 	}
 	
-	private void onDataRecvTcp(byte [] data) {
-		tcpRecv.addAndGet(data.length);
-		client.send(data);
+	private void onDataServerToClient(byte [] data) {
+		serverToClient.addAndGet(data.length);
 		if (callback != null)
-			callback.onDataRecvTcp(data);
+			callback.onDataServerToClient(data);
 	}
 	
-	private void onDataSentTcp(byte [] data) {
-		tcpSent.addAndGet(data.length);
-		server.send(data);
+	private void onDataClientToServer(byte [] data) {
+		clientToServer.addAndGet(data.length);
 		if (callback != null)
-			callback.onDataSentTcp(data);
-	}
-	
-	private void onDataRecvUdp(byte [] data) {
-		udpRecv.addAndGet(data.length);
-		if (callback != null)
-			callback.onDataRecvUdp(data);
-	}
-	
-	private void onDataSentUdp(byte [] data) {
-		udpSent.addAndGet(data.length);
-		if (callback != null)
-			callback.onDataSentUdp(data);
+			callback.onDataClientToServer(data);
 	}
 	
 	public interface ConnectionCallback {
-		void onServerStatusChanged(ConnectionStatus oldStatus, ConnectionStatus status);
+		void onServerStatusChanged(ServerConnectionStatus oldStatus, ServerConnectionStatus status);
 		void onClientConnected();
 		void onClientDisconnected();
-		void onDataRecvTcp(byte [] data);
-		void onDataSentTcp(byte [] data);
-		void onDataRecvUdp(byte [] data);
-		void onDataSentUdp(byte [] data);
+		void onDataServerToClient(byte [] data);
+		void onDataClientToServer(byte [] data);
 	}
 	
 }

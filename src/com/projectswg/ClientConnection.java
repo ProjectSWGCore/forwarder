@@ -1,76 +1,45 @@
 package com.projectswg;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import network.packets.swg.SWGPacket;
 
-import com.projectswg.ClientReceiver.ClientReceiverCallback;
-import com.projectswg.ClientReceiver.ConnectionState;
+import com.projectswg.control.Manager;
 import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.Packet;
 import com.projectswg.networking.NetInterceptor.InterceptorProperties;
-import com.projectswg.networking.swg.HeartBeat;
 
-public class ClientConnection {
-
-	private final boolean timeout;
+public class ClientConnection extends Manager {
 	
-	private ScheduledExecutorService pinger;
 	private ClientSender sender;
 	private ClientReceiver receiver;
-	private ClientCallback callback;
 	private NetInterceptor interceptor;
-	private boolean connected;
 	
 	public ClientConnection(int loginPort, boolean timeout) {
-		this.timeout = timeout;
-		callback = null;
-		connected = false;
 		interceptor = new NetInterceptor();
 		sender = new ClientSender(interceptor, loginPort);
-		receiver = new ClientReceiver(interceptor);
+		receiver = new ClientReceiver(interceptor, timeout);
 		receiver.setClientSender(sender);
+		
+		addChildService(sender);
+		addChildService(receiver);
 	}
 	
 	public InterceptorProperties getInterceptorProperties() {
 		return interceptor.getProperties();
 	}
 	
-	public boolean restart() {
-		stop();
-		return start();
-	}
-	
-	public boolean start() {
-		if (!sender.start())
+	public boolean initialize() {
+		if (!super.initialize())
 			return false;
-		receiver.start();
-		interceptor.getProperties().setPort(sender.getZonePort());
-		sender.setLoginCallback((packet) -> receiver.onPacket(false, packet));
-		sender.setZoneCallback((packet) -> receiver.onPacket(true, packet));
-		receiver.setReceiverCallback(new ClientReceiverCallback() {
-			public void onPacket(byte[] data) { ClientConnection.this.onPacket(data); }
-			public void onUdpRecv(boolean zone, byte[] data) { ClientConnection.this.onUdpRecv(zone, data); }
-			public void onDisconnected() { ClientConnection.this.onDisconnected(); }
-			public void onConnected() { ClientConnection.this.onConnected(); }
-			public void onConnectionChanged(ConnectionState state) { ClientConnection.this.onConnectionStateChanged(state); }
-		});
-		sender.setSenderCallback((zone, data) -> onUdpSent(zone, data));
-		pinger = Executors.newSingleThreadScheduledExecutor();
-		pinger.scheduleAtFixedRate(()->ping(), 0, 1000, TimeUnit.MILLISECONDS);
 		return true;
 	}
 	
-	public void stop() {
-		if (pinger != null)
-			pinger.shutdownNow();
-		sender.stop();
-		receiver.stop();
-		onDisconnected();
-	}
-	
-	public void setCallback(ClientCallback callback) {
-		this.callback = callback;
+	public boolean start() {
+		if (!super.start())
+			return false;
+		interceptor.getProperties().setPort(sender.getZonePort());
+		sender.setLoginCallback((packet) -> receiver.onPacket(false, packet));
+		sender.setZoneCallback((packet) -> receiver.onPacket(true, packet));
+		return true;
 	}
 	
 	public void setLoginPort(int loginPort) {
@@ -85,77 +54,16 @@ public class ClientConnection {
 		sender.send(packet);
 	}
 	
+	public void send(SWGPacket packet) {
+		sender.send(packet);
+	}
+	
 	public int getLoginPort() {
 		return sender.getLoginPort();
 	}
 	
 	public int getZonePort() {
 		return sender.getZonePort();
-	}
-	
-	private void onPacket(byte [] data) {
-		if (callback != null)
-			callback.onPacket(data);
-	}
-	
-	private void onUdpSent(boolean zone, byte [] data) {
-		if (callback != null)
-			callback.onUdpSent(zone, data);
-	}
-	
-	private void onUdpRecv(boolean zone, byte [] data) {
-		if (callback != null)
-			callback.onUdpRecv(zone, data);
-	}
-	
-	private void onDisconnected() {
-		boolean prev = connected;
-		connected = false;
-		if (callback != null && prev)
-			callback.onDisconnected();
-		sender.reset();
-		receiver.reset();
-	}
-	
-	private void onConnected() {
-		boolean prev = connected;
-		connected = true;
-		if (callback != null && !prev)
-			callback.onConnected();
-		sender.reset();
-		receiver.reset();
-	}
-	
-	private void onConnectionStateChanged(ConnectionState state) {
-		switch (state) {
-			case DISCONNECTED:
-			case LOGIN_CONNECTED:
-			case ZONE_CONNECTED:
-				sender.reset();
-				receiver.reset();
-				break;
-			default:
-				break;
-		}
-	}
-	
-	private void ping() {
-		if (!connected || !timeout)
-			return;
-		if (receiver.getTimeSinceLastPacket() > 5000 && !interceptor.getData().isZoning())
-			onDisconnected();
-		else if (receiver.getTimeSinceLastPacket() > 30000 && interceptor.getData().isZoning())
-			onDisconnected();
-		else
-			sender.send(new HeartBeat().encode().array());
-	}
-	
-	public interface ClientCallback {
-		void onConnected();
-		void onDisconnected();
-		void onPacket(byte [] data);
-		void onUdpSent(boolean zone, byte [] data);
-		void onUdpRecv(boolean zone, byte [] data);
 	}
 	
 }

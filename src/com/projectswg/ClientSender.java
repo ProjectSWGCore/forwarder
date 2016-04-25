@@ -3,119 +3,156 @@ package com.projectswg;
 import java.net.BindException;
 import java.net.InetAddress;
 import java.net.SocketException;
-import java.nio.ByteBuffer;
-import java.util.LinkedList;
-import java.util.Queue;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import network.packets.swg.SWGPacket;
+
+import com.projectswg.control.Intent;
+import com.projectswg.control.Service;
+import com.projectswg.intents.ClientConnectionChangedIntent;
+import com.projectswg.intents.ClientSonyPacketIntent;
+import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.Packet;
-import com.projectswg.networking.SWGPacket;
 import com.projectswg.networking.UDPServer;
 import com.projectswg.networking.UDPServer.UDPCallback;
 import com.projectswg.networking.encryption.Encryption;
-import com.projectswg.networking.soe.DataChannelA;
+import com.projectswg.networking.sender.PacketPackager;
+import com.projectswg.networking.sender.PacketResender;
+import com.projectswg.networking.soe.Acknowledge;
 import com.projectswg.networking.soe.Disconnect;
-import com.projectswg.networking.soe.Fragmented;
+import com.projectswg.networking.soe.OutOfOrder;
 import com.projectswg.networking.soe.SequencedPacket;
 import com.projectswg.networking.soe.SessionResponse;
 import com.projectswg.networking.soe.Disconnect.DisconnectReason;
+import com.projectswg.resources.ClientConnectionStatus;
+import com.projectswg.utilities.Log;
 
-public class ClientSender {
+public class ClientSender extends Service {
 	
 	private static final InetAddress ADDR = InetAddress.getLoopbackAddress();
 	
-	private final NetInterceptor interceptor;
+	private final AtomicBoolean serverRunning;
+	private final PacketPackager packager;
+	private final PacketResender resender;
 	private UDPServer loginServer;
 	private UDPServer zoneServer;
-	private Queue<SequencedOutbound> sentPackets;
-	private Queue<byte []> inboundQueue;
-	private ExecutorService executor;
-	private ClientSenderCallback callback;
-	private short txSequence;
 	private int connectionId;
 	private int port;
 	private int loginPort;
 	private boolean zone;
 	
 	public ClientSender(NetInterceptor interceptor, int loginPort) {
-		this.interceptor = interceptor;
+		this.serverRunning = new AtomicBoolean(false);
+		this.packager = new PacketPackager(interceptor, (p) -> send(p));
+		this.resender = new PacketResender((data) -> sendRaw(data));
 		this.loginPort = loginPort;
-		sentPackets = new LinkedList<>();
-		inboundQueue = new LinkedList<>();
 		connectionId = -1;
-		txSequence = 0;
 		port = 0;
 		zone = false;
 	}
 	
-	public synchronized boolean start() {
-		safeCloseServers();
+	public boolean initialize() {
+		registerForIntent(ClientConnectionChangedIntent.TYPE);
+		registerForIntent(ServerToClientPacketIntent.TYPE);
+		registerForIntent(ClientSonyPacketIntent.TYPE);
+		connectionId = -1;
+		port = 0;
+		zone = false;
+		return super.initialize();
+	}
+	
+	public boolean start() {
+		reset();
+		port = 0;
+		zone = false;
+		serverRunning.set(false);
+		packager.start();
+		resender.start();
 		try {
 			loginServer = new UDPServer(loginPort, 496);
 			zoneServer = new UDPServer(0, 496);
 			loginPort = loginServer.getPort();
-			executor = Executors.newFixedThreadPool(2);
-			executor.execute(() -> outboundRunnable());
-			executor.execute(() -> inboundRunnable());
-			return true;
+			serverRunning.set(true);
 		} catch (BindException e) {
-			System.err.println("Failed to bind UDP servers! Login Port: " + loginPort);
+			Log.err(this, "Failed to bind UDP servers! Login Port: " + loginPort);
+			return false;
 		} catch (SocketException e) {
-			e.printStackTrace();
+			Log.err(this, e);
+			return false;
 		}
-		safeCloseServers();
-		executor = null;
-		return false;
+		return super.start();
 	}
 	
-	public synchronized void stop() {
+	public boolean stop() {
+		packager.stop();
+		resender.stop();
+		reset();
+		if (loginServer != null)
+			loginServer.setCallback(null);
+		if (zoneServer != null)
+			zoneServer.setCallback(null);
 		disconnect(DisconnectReason.APPLICATION);
-		if (executor != null)
-			executor.shutdownNow();
+		serverRunning.set(false);
 		safeCloseServers();
+		return super.stop();
 	}
 	
-	public synchronized void setLoginCallback(UDPCallback callback) {
+	@Override
+	public void onIntentReceived(Intent i) {
+		if (i instanceof ClientConnectionChangedIntent) {
+			ClientConnectionStatus old = ((ClientConnectionChangedIntent) i).getOldStatus();
+			ClientConnectionStatus status = ((ClientConnectionChangedIntent) i).getStatus();
+			if (old == ClientConnectionStatus.LOGIN_CONNECTED && status == ClientConnectionStatus.ZONE_CONNECTED)
+				reset();
+			else if (status == ClientConnectionStatus.DISCONNECTED)
+				reset();
+		} else if (i instanceof ServerToClientPacketIntent) {
+			send(((ServerToClientPacketIntent) i).getRawData());
+		} else if (i instanceof ClientSonyPacketIntent) {
+			Packet p = ((ClientSonyPacketIntent) i).getPacket();
+			if (p instanceof Acknowledge)
+				onAcknowledge(((Acknowledge) p).getSequence());
+			else if (p instanceof OutOfOrder)
+				onOutOfOrder(((OutOfOrder) p).getSequence());
+		}
+	}
+	
+	public void setLoginCallback(UDPCallback callback) {
 		if (loginServer != null)
 			loginServer.setCallback(callback);
 	}
 	
-	public synchronized void setZoneCallback(UDPCallback callback) {
+	public void setZoneCallback(UDPCallback callback) {
 		if (zoneServer != null)
 			zoneServer.setCallback(callback);
 	}
 	
-	public synchronized void setSenderCallback(ClientSenderCallback callback) {
-		this.callback = callback;
-	}
-	
-	public synchronized void setLoginPort(int loginPort) {
+	public void setLoginPort(int loginPort) {
 		this.loginPort = loginPort;
 	}
 	
-	public synchronized int getLoginPort() {
+	public int getLoginPort() {
 		return loginPort;
 	}
 	
-	public synchronized int getZonePort() {
+	public int getZonePort() {
 		if (zoneServer == null)
 			return -1;
 		return zoneServer.getPort();
 	}
 	
 	public int getSequence() {
-		return txSequence;
+		return packager.getSequence();
+	}
+	
+	public int getConnectionId() {
+		return connectionId;
 	}
 	
 	public boolean isRunning() {
-		if (loginServer != null && !loginServer.isRunning())
-			return false;
-		if (zoneServer != null && !zoneServer.isRunning())
-			return false;
-		return loginServer != null || zoneServer != null;
+		return serverRunning.get();
 	}
 	
 	public void setZone(boolean zone) {
@@ -137,35 +174,17 @@ public class ClientSender {
 	}
 	
 	public void reset() {
-		synchronized (sentPackets) {
-			sentPackets.clear();
-		}
-		txSequence = 0;
+		packager.reset();
+		resender.reset();
+		connectionId = -1;
 	}
 	
 	public void onOutOfOrder(short sequence) {
-		synchronized (sentPackets) {
-			for (SequencedOutbound packet : sentPackets) {
-				if (packet.getSequence() <= sequence) {
-					if (packet.getTimeSinceSent() >= 100) {
-						sendRaw(packet.getData());
-						packet.updateTimeSinceSent();
-					}
-				} else
-					break;
-			}
-		}
+		resender.resendTo(sequence);
 	}
 	
 	public void onAcknowledge(short sequence) {
-		synchronized (sentPackets) {
-			while (!sentPackets.isEmpty()) {
-				if (sentPackets.peek().getSequence() <= sequence)
-					sentPackets.poll();
-				else
-					break;
-			}
-		}
+		resender.clearTo(sequence);
 	}
 	
 	public void send(SWGPacket ... packets) {
@@ -175,123 +194,40 @@ public class ClientSender {
 	}
 	
 	public void send(byte [] data) {
-		synchronized (inboundQueue) {
-			inboundQueue.add(data);
-			inboundQueue.notifyAll();
-		}
+		packager.addToPackage(data);
 	}
 	
 	public void sendRaw(byte [] data) {
 		sendRaw(port, data);
 	}
 	
-	public synchronized void sendRaw(int port, byte [] data) {
+	public void sendRaw(int port, byte [] data) {
+		if (port == 0) {
+			Log.err(this, "Cannot send to port 0!  Data: " + Arrays.toString(data));
+			return;
+		}
 		if (zone && zoneServer != null)
 			zoneServer.send(port, ADDR, data);
 		else if (!zone && loginServer != null)
 			loginServer.send(port, ADDR, data);
-		else
+		else {
+			Log.err(this, "No matching server! isZone=%b: Login=%b Zone=%b", zone, loginServer!=null, zoneServer!=null);
 			return;
-		if (callback != null)
-			callback.onUdpSent(zone, data);
+		}
 	}
 	
 	public void send(Packet packet) {
+		if (port == 0)
+			return;
 		byte [] data;
 		if (packet instanceof SessionResponse)
 			data = packet.encode().array();
 		else
 			data = Encryption.encode(packet.encode().array(), 0);
 		if (packet instanceof SequencedPacket) {
-			synchronized (sentPackets) {
-				sentPackets.add(new SequencedOutbound(((SequencedPacket) packet).getSequence(), data));
-				sentPackets.notifyAll();
-				sendRaw(data);
-			}
+			resender.add(((SequencedPacket) packet).getSequence(), data);
 		} else {
 			sendRaw(data);
-		}
-	}
-	
-	private void outboundRunnable() {
-		while (isRunning()) {
-			synchronized (sentPackets) {
-				for (SequencedOutbound packet : sentPackets) {
-					if (packet.getTimeSinceSent() >= 2000) {
-						sendRaw(port, packet.getData());
-						packet.updateTimeSinceSent();
-					}
-					Thread.yield();
-				}
-			}
-			try {
-				Thread.sleep(100);
-			} catch (InterruptedException e) {
-				break;
-			}
-		}
-	}
-	
-	private void inboundRunnable() {
-		final int dataHeaderSize = 8;
-		byte [] data;
-		Queue<byte []> outbound = new ArrayBlockingQueue<>(8, true);
-		int size = 0;
-		boolean lastWasEmpty = false;
-		while (isRunning()) {
-			size = dataHeaderSize;
-			synchronized (inboundQueue) {
-				if (inboundQueue.isEmpty() && lastWasEmpty) {
-					try { inboundQueue.wait(); } catch (InterruptedException e) { break; }
-				}
-				lastWasEmpty = inboundQueue.isEmpty();
-				while (!inboundQueue.isEmpty()) {
-					data = interceptor.interceptServer(inboundQueue.poll());
-					if ((size + getPacketLength(data) >= 496 && !outbound.isEmpty()) || outbound.size() == 8) {
-						createOutboundPacket(outbound, size);
-						size = dataHeaderSize;
-					}
-					outbound.add(data);
-					size += getPacketLength(data);
-					if (size >= 496) {
-						createOutboundPacket(outbound, size);
-						size = dataHeaderSize;
-					}
-					Thread.yield();
-				}
-			}
-			if (!outbound.isEmpty())
-				createOutboundPacket(outbound, size);
-			try {
-				Thread.sleep(25);
-			} catch (InterruptedException e) {
-				break;
-			}
-		}
-	}
-	
-	private int getPacketLength(byte [] data) {
-		if (data.length >= 255)
-			return data.length + 3;
-		else
-			return data.length + 1;
-	}
-	
-	private void createOutboundPacket(Queue<byte []> outbound, int size) {
-		if (size <= 496) { // Fits into single data packet
-			DataChannelA channel = new DataChannelA();
-			channel.setSequence(txSequence++);
-			while (!outbound.isEmpty())
-				channel.addPacket(outbound.poll());
-			send(channel);
-		} else { // Fragmented
-			while (!outbound.isEmpty()) {
-				Fragmented [] frags = Fragmented.encode(ByteBuffer.wrap(outbound.poll()), txSequence);
-				txSequence += frags.length;
-				for (Fragmented frag : frags) {
-					send(frag);
-				}
-			}
 		}
 	}
 	
@@ -308,35 +244,6 @@ public class ClientSender {
 	
 	public interface ClientSenderCallback {
 		void onUdpSent(boolean zone, byte [] data);
-	}
-	
-	private static class SequencedOutbound implements SequencedPacket {
-		
-		private short sequence;
-		private long sent;
-		private byte [] data;
-		
-		public SequencedOutbound(short sequence, byte [] data) {
-			this.sequence = sequence;
-			this.sent = System.nanoTime();
-			this.data = data;
-		}
-		
-		public short getSequence() { return sequence; }
-		public double getTimeSinceSent() { return (System.nanoTime()-sent)/1E6; }
-		public byte [] getData() { return data; }
-		
-		public void updateTimeSinceSent() {
-			sent = System.nanoTime();
-		}
-		
-		public int compareTo(SequencedPacket p) {
-			if (sequence < p.getSequence())
-				return -1;
-			if (sequence == p.getSequence())
-				return 0;
-			return 1;
-		}
 	}
 	
 }

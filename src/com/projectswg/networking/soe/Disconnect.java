@@ -65,7 +65,7 @@ public class Disconnect extends Packet {
 		return data;
 	}
 	
-	public int getConnectionID() { return connectionId; }
+	public int getConnectionId() { return connectionId; }
 	public DisconnectReason getReason() { return reason; }
 	
 	private DisconnectReason getReason(int reason) {

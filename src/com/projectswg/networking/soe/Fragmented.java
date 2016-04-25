@@ -92,9 +92,9 @@ public class Fragmented extends Packet implements SequencedPacket {
 	
 	@Override
 	public boolean equals(Object o) {
-		if (o instanceof Fragmented)
-			return ((Fragmented) o).sequence == sequence;
-		return false;
+		if (!(o instanceof Fragmented))
+			return super.equals(o);
+		return ((Fragmented) o).sequence == sequence;
 	}
 	
 	@Override

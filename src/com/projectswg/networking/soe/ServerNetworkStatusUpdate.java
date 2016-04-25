@@ -49,9 +49,9 @@ public class ServerNetworkStatusUpdate extends Packet {
 		decode(data);
 	}
 	
-	public ServerNetworkStatusUpdate(int clientTickCount, long clientSent, long clientRecv, long serverSent, long serverRecv) {
+	public ServerNetworkStatusUpdate(int clientTickCount, int serverSyncStamp, long clientSent, long clientRecv, long serverSent, long serverRecv) {
 		this.clientTickCount = (short) clientTickCount;
-		this.serverSyncStampLong = 0;
+		this.serverSyncStampLong = serverSyncStamp;
 		this.clientPacketsSent = clientSent;
 		this.clientPacketsRecv = clientRecv;
 		this.serverPacketsSent = serverSent;

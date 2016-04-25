@@ -37,6 +37,8 @@ import java.net.UnknownHostException;
 import java.util.Queue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import com.projectswg.utilities.Log;
+
 /**
  * This class represents a UDP server that listens for packets and
  * will call the callback when it receives one
@@ -57,15 +59,11 @@ public class UDPServer {
 	}
 	
 	public UDPServer(int port, int packetSize) throws SocketException {
-		this(InetAddress.getLoopbackAddress(), port, packetSize);
-	}
-	
-	public UDPServer(InetAddress bindAddr, int port, int packetSize) throws SocketException {
 		this.callback = null;
 		this.packetSize = packetSize;
 		inbound = new LinkedBlockingQueue<UDPPacket>();
 		if (port > 0)
-			socket = new DatagramSocket(port, bindAddr);
+			socket = new DatagramSocket(port);
 		else
 			socket = new DatagramSocket();
 		this.port = socket.getLocalPort();
@@ -117,7 +115,7 @@ public class UDPServer {
 			if (msg != null && msg.startsWith("Socket") && msg.endsWith("closed"))
 				return false;
 			else
-				e.printStackTrace();
+				Log.err(this, e);
 			return false;
 		}
 	}
@@ -126,7 +124,7 @@ public class UDPServer {
 		try {
 			return send(port, InetAddress.getByName(addr), data);
 		} catch (UnknownHostException e) {
-			e.printStackTrace();
+			Log.err(this, e);
 		}
 		return false;
 	}
@@ -203,7 +201,7 @@ public class UDPServer {
 					loop();
 				}
 			} catch (Exception e) {
-				e.printStackTrace();
+				Log.err(this, e);
 			}
 			running = false;
 		}
@@ -234,7 +232,7 @@ public class UDPServer {
 				if (e.getMessage() != null && (e.getMessage().contains("socket closed") || e.getMessage().contains("Socket closed")))
 					running = false;
 				else
-					e.printStackTrace();
+					Log.err(this, e);
 				packet.setLength(0);
 			}
 			return packet;
