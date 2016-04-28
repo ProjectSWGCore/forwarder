@@ -30,7 +30,7 @@ public class NetInterceptor {
 			return data;
 		ByteBuffer bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
 		switch (bb.getInt(2)) {
-			case 0x41131F96:
+			case 0x41131F96: // LoginClientId
 				return setAutoLogin(bb);
 			case 0x43FD1C22: // CmdSceneReady
 				this.data.setZoning(false);
@@ -45,7 +45,7 @@ public class NetInterceptor {
 			return data;
 		ByteBuffer bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
 		switch (bb.getInt(2)) {
-			case 0x3436AEB6:
+			case 0x3436AEB6: // LoginClusterStatus
 				return getServerList(bb);
 			default:
 				return data;
@@ -67,6 +67,7 @@ public class NetInterceptor {
 			g.setAddress("127.0.0.1");
 			g.setZonePort((short) properties.getPort());
 			g.setPingPort((short) properties.getPort());
+			g.setPopulation(-1);
 		}
 		return cluster.encode().array();
 	}

@@ -63,7 +63,7 @@ public class ClientNetworkStatusUpdate extends Packet {
 	}
 	
 	public void decode(ByteBuffer data) {
-		data.position(2);
+		getNetShort(data); // 0x07
 		clientTickCount  = getNetShort(data);
 		lastUpdate       = getNetInt(data);
 		avgUpdate        = getNetInt(data);

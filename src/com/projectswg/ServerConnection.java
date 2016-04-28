@@ -6,6 +6,7 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.SocketChannel;
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -31,7 +32,6 @@ import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.networking.encryption.Compression;
-import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.resources.ServerConnectionStatus;
 import com.projectswg.utilities.IntentChain;
 import com.projectswg.utilities.Log;
@@ -130,13 +130,10 @@ public class ServerConnection extends Manager {
 	private void processClientConnectionChanged(ClientConnectionChangedIntent ccci) {
 		switch (ccci.getStatus()) {
 			case LOGIN_CONNECTED:
-				if (ccci.getOldStatus() != ClientConnectionStatus.DISCONNECTED || running.getAndSet(true))
-					break;
+			case ZONE_CONNECTED:
 				startServer();
 				break;
 			case DISCONNECTED:
-				if (ccci.getOldStatus() == ClientConnectionStatus.DISCONNECTED || !running.getAndSet(false))
-					break;
 				stopServer();
 				break;
 			default:
@@ -145,13 +142,16 @@ public class ServerConnection extends Manager {
 	}
 	
 	private void startServer() {
+		if (running.getAndSet(true))
+			return;
 		connectionExecutor = Executors.newSingleThreadExecutor(ThreadUtilities.newThreadFactory("server-conn-connection"));
 		processExecutor = Executors.newSingleThreadExecutor(ThreadUtilities.newThreadFactory("server-conn-processor"));
 		connectionExecutor.execute(() -> run());
 	}
 	
 	private void stopServer() {
-		running.set(false);
+		if (!running.getAndSet(false))
+			return;
 		disconnect(ServerConnectionStatus.DISCONNECTED);
 		safeShutdown(connectionExecutor);
 		safeShutdown(processExecutor);
@@ -268,10 +268,14 @@ public class ServerConnection extends Manager {
 				addToBuffer(data);
 			}
 		} catch (IOException e) {
-			if (e.getMessage() == null)
-				disconnect(ServerConnectionStatus.DISCONNECT_UNKNOWN_REASON);
-			else
+			if (e instanceof AsynchronousCloseException)
+				disconnect(ServerConnectionStatus.DISCONNECTED);
+			else if (e.getMessage() != null)
 				disconnect(getReason(e.getMessage()));
+			else {
+				disconnect(ServerConnectionStatus.DISCONNECT_UNKNOWN_REASON);
+				e.printStackTrace();
+			}
 		} catch (Exception e) {
 			Log.err(this, "Failed to process buffer!");
 			Log.err(this, e);
@@ -310,9 +314,10 @@ public class ServerConnection extends Manager {
 				reset();
 				return true;
 			} catch (IOException e) {
-				if (e.getMessage() == null)
+				if (e.getMessage() == null) {
 					disconnect(ServerConnectionStatus.DISCONNECT_UNKNOWN_REASON);
-				else
+					e.printStackTrace();
+				} else
 					disconnect(getReason(e.getMessage()));
 				return false;
 			}

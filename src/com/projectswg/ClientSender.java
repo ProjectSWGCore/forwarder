@@ -17,16 +17,13 @@ import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.Packet;
 import com.projectswg.networking.UDPServer;
 import com.projectswg.networking.UDPServer.UDPCallback;
-import com.projectswg.networking.encryption.Encryption;
 import com.projectswg.networking.sender.PacketPackager;
 import com.projectswg.networking.sender.PacketResender;
 import com.projectswg.networking.soe.Acknowledge;
 import com.projectswg.networking.soe.Disconnect;
 import com.projectswg.networking.soe.OutOfOrder;
 import com.projectswg.networking.soe.SequencedPacket;
-import com.projectswg.networking.soe.SessionResponse;
 import com.projectswg.networking.soe.Disconnect.DisconnectReason;
-import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.utilities.Log;
 
 public class ClientSender extends Service {
@@ -101,14 +98,7 @@ public class ClientSender extends Service {
 	
 	@Override
 	public void onIntentReceived(Intent i) {
-		if (i instanceof ClientConnectionChangedIntent) {
-			ClientConnectionStatus old = ((ClientConnectionChangedIntent) i).getOldStatus();
-			ClientConnectionStatus status = ((ClientConnectionChangedIntent) i).getStatus();
-			if (old == ClientConnectionStatus.LOGIN_CONNECTED && status == ClientConnectionStatus.ZONE_CONNECTED)
-				reset();
-			else if (status == ClientConnectionStatus.DISCONNECTED)
-				reset();
-		} else if (i instanceof ServerToClientPacketIntent) {
+		if (i instanceof ServerToClientPacketIntent) {
 			send(((ServerToClientPacketIntent) i).getRawData());
 		} else if (i instanceof ClientSonyPacketIntent) {
 			Packet p = ((ClientSonyPacketIntent) i).getPacket();
@@ -219,11 +209,7 @@ public class ClientSender extends Service {
 	public void send(Packet packet) {
 		if (port == 0)
 			return;
-		byte [] data;
-		if (packet instanceof SessionResponse)
-			data = packet.encode().array();
-		else
-			data = Encryption.encode(packet.encode().array(), 0);
+		byte [] data = packet.encode().array();
 		if (packet instanceof SequencedPacket) {
 			resender.add(((SequencedPacket) packet).getSequence(), data);
 		} else {

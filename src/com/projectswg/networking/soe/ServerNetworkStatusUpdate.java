@@ -89,8 +89,8 @@ public class ServerNetworkStatusUpdate extends Packet {
 	
 	public void setClientTickCount(short tick)   { this.clientTickCount = tick; }
 	public void setServerSyncStampLong(int sync) { this.serverSyncStampLong = sync; }
-	public void setClientPacketsSent(int sent)   { this.clientPacketsSent = sent; }
-	public void setClientPacketsRecv(int recv)   { this.clientPacketsRecv = recv; }
-	public void setServerPacketsSent(int sent)   { this.serverPacketsSent = sent; }
-	public void setServerPacketsRecv(int recv)   { this.serverPacketsRecv = recv; }
+	public void setClientPacketsSent(long sent)   { this.clientPacketsSent = sent; }
+	public void setClientPacketsRecv(long recv)   { this.clientPacketsRecv = recv; }
+	public void setServerPacketsSent(long sent)   { this.serverPacketsSent = sent; }
+	public void setServerPacketsRecv(long recv)   { this.serverPacketsRecv = recv; }
 }

@@ -22,7 +22,6 @@ import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.Packet;
 import com.projectswg.networking.UDPServer.UDPPacket;
-import com.projectswg.networking.encryption.Encryption;
 import com.projectswg.networking.soe.Acknowledge;
 import com.projectswg.networking.soe.ClientNetworkStatusUpdate;
 import com.projectswg.networking.soe.DataChannelA;
@@ -70,7 +69,6 @@ public class ClientReceiver extends Service {
 	
 	@Override
 	public boolean initialize() {
-		registerForIntent(ClientConnectionChangedIntent.TYPE);
 		registerForIntent(ClientSonyPacketIntent.TYPE);
 		rxSequence = -1;
 		lastPacket.set(0);
@@ -112,9 +110,7 @@ public class ClientReceiver extends Service {
 	
 	@Override
 	public void onIntentReceived(Intent i) {
-		if (i instanceof ClientConnectionChangedIntent) {
-			reset();
-		} else if (i instanceof ClientSonyPacketIntent) {
+		if (i instanceof ClientSonyPacketIntent) {
 			Packet p = ((ClientSonyPacketIntent) i).getPacket();
 			if (p instanceof SessionRequest)
 				onSessionRequest((SessionRequest) p);
@@ -154,18 +150,15 @@ public class ClientReceiver extends Service {
 			return;
 		}
 		if (packet.getData()[0] == 0 && packet.getData()[1] == 1) {
-			if (sender.getConnectionId() != -1)
-				sender.send(new Disconnect(sender.getConnectionId(), DisconnectReason.APPLICATION));
 			this.zone = zone;
 			this.port = packet.getPort();
+			reset();
+			sender.reset();
 			sender.setZone(zone);
 			sender.setPort(packet.getPort());
-			sender.reset();
-			executor.execute(() -> process(ByteBuffer.wrap(packet.getData()).order(ByteOrder.BIG_ENDIAN)));
-		} else {
-			if (packet.getPort() == port)
-				executor.execute(() -> process(ByteBuffer.wrap(Encryption.decode(packet.getData(), 0)).order(ByteOrder.BIG_ENDIAN)));
-		}
+		} else if (packet.getPort() != port)
+			return;
+		executor.execute(() -> process(ByteBuffer.wrap(packet.getData()).order(ByteOrder.BIG_ENDIAN)));
 	}
 	
 	private void ping() {
@@ -223,9 +216,12 @@ public class ClientReceiver extends Service {
 			Log.out(this, "Login Session Request");
 			setConnectionState(ClientConnectionStatus.LOGIN_CONNECTED);
 		}
+		int oldId = sender.getConnectionId();
 		sender.setConnectionId(request.getConnectionID());
-		sender.send(new SessionResponse(request.getConnectionID(), 0, (byte) 2, (byte) 1, (byte) 4, MAX_PACKET_SIZE));
-		sender.send(new ServerString("ProjectSWG:1"), new ServerId(1));
+		sender.send(new SessionResponse(request.getConnectionID(), 0, (byte) 0, (byte) 0, (byte) 0, MAX_PACKET_SIZE));
+		sender.send(new ServerString("Holocore"), new ServerId(1));
+		if (oldId != -1)
+			sender.send(new Disconnect(oldId, DisconnectReason.APPLICATION));
 	}
 	
 	private void onMultiPacket(MultiPacket packet) {
@@ -235,6 +231,7 @@ public class ClientReceiver extends Service {
 	}
 	
 	private void onDisconnect(Disconnect disconnect) {
+		Log.out(this, "Received client disconnect");
 		setConnectionState(ClientConnectionStatus.DISCONNECTED);
 		zone = false;
 	}
@@ -247,11 +244,10 @@ public class ClientReceiver extends Service {
 		ServerNetworkStatusUpdate serverNet = new ServerNetworkStatusUpdate();
 		serverNet.setClientTickCount((short) update.getTick());
 		serverNet.setServerSyncStampLong((int) (System.currentTimeMillis()-GALACTIC_BASE_TIME));
-		int rx = rxSequence == -1 ? 0 : rxSequence;
-		serverNet.setClientPacketsSent(rx);
-		serverNet.setClientPacketsRecv(sender.getSequence());
+		serverNet.setClientPacketsSent(update.getSent());
+		serverNet.setClientPacketsRecv(update.getRecv());
 		serverNet.setServerPacketsSent(sender.getSequence());
-		serverNet.setServerPacketsRecv(rx);
+		serverNet.setServerPacketsRecv(rxSequence+1);
 		sender.send(serverNet);
 	}
 	

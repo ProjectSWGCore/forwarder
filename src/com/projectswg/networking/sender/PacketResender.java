@@ -25,7 +25,7 @@ public class PacketResender {
 		this.running = new AtomicBoolean(false);
 		this.sentPackets = new LinkedList<>();
 		this.executor = null;
-		this.mode = SenderMode.FAST;
+		this.mode = SenderMode.FASTEST;
 	}
 	
 	public void start() {

@@ -113,7 +113,7 @@ public class PacketRecordingService extends Service {
 	private void onServerToClient(ServerToClientPacketIntent s2c) {
 		if (!recording.get())
 			return;
-		recorder.record(true, source, destination, s2c.getRawData());
+		recorder.record(true, destination, source, s2c.getRawData());
 	}
 	
 	private void onClientToServer(ClientToServerPacketIntent c2s) {
