@@ -87,6 +87,11 @@ public class UDPServer {
 	}
 	
 	public int getPort() {
+		port = socket.getLocalPort();
+		while (port == 0) {
+			port = socket.getLocalPort();
+			try { Thread.sleep(5); } catch (InterruptedException e) { break; }
+		}
 		return port;
 	}
 	

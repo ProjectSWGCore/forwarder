@@ -27,12 +27,6 @@ public class ClientConnection extends Manager {
 		return interceptor.getProperties();
 	}
 	
-	public boolean initialize() {
-		if (!super.initialize())
-			return false;
-		return true;
-	}
-	
 	public boolean start() {
 		if (!super.start())
 			return false;

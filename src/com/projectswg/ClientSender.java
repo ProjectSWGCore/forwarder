@@ -65,12 +65,12 @@ public class ClientSender extends Service {
 		port = 0;
 		zone = false;
 		serverRunning.set(false);
-		packager.start();
-		resender.start();
 		try {
 			loginServer = new UDPServer(loginPort, 496);
 			zoneServer = new UDPServer(0, 496);
 			loginPort = loginServer.getPort();
+			packager.start();
+			resender.start();
 			serverRunning.set(true);
 		} catch (BindException e) {
 			Log.err(this, "Failed to bind UDP servers! Login Port: " + loginPort);

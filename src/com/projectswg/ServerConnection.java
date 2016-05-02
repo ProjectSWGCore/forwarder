@@ -160,15 +160,20 @@ public class ServerConnection extends Manager {
 	}
 	
 	private boolean processPacket() {
-		bufferStream.mark();
-		byte bitmask = bufferStream.getByte();
-		short messageLength = bufferStream.getShort();
-		short decompressedLength = bufferStream.getShort();
-		if (bufferStream.remaining() < messageLength) {
-			bufferStream.rewind();
-			return false;
+		byte bitmask;
+		short messageLength, decompressedLength;
+		byte [] message;
+		synchronized (bufferStream) {
+			bufferStream.mark();
+			bitmask = bufferStream.getByte();
+			messageLength = bufferStream.getShort();
+			decompressedLength = bufferStream.getShort();
+			if (bufferStream.remaining() < messageLength) {
+				bufferStream.rewind();
+				return false;
+			}
+			message = bufferStream.getArray(messageLength);
 		}
-		byte [] message = bufferStream.getArray(messageLength);
 		if ((bitmask & 1) != 0) // Compressed
 			message = Compression.decompress(message, decompressedLength);
 		if (message.length < 6)
@@ -292,17 +297,19 @@ public class ServerConnection extends Manager {
 	}
 	
 	private void process() {
+		while (bufferStream.remaining() >= 5) {
+			if (!processPacket())
+				break;
+		}
 		synchronized (bufferMutex) {
-			while (bufferStream.remaining() >= 5) {
-				if (!processPacket())
-					break;
-			}
 			bufferStream.compact();
 		}
 	}
 	
 	private void reset() {
-		bufferStream.reset();
+		synchronized (bufferMutex) {
+			bufferStream.reset();
+		}
 	}
 	
 	private boolean connect() {
