@@ -54,10 +54,16 @@ public class ClientSender extends Service {
 		registerForIntent(ClientConnectionChangedIntent.TYPE);
 		registerForIntent(ServerToClientPacketIntent.TYPE);
 		registerForIntent(ClientSonyPacketIntent.TYPE);
+		hardReset();
+		return super.initialize();
+	}
+	
+	public void hardReset() {
 		connectionId = -1;
 		port = 0;
 		zone = false;
-		return super.initialize();
+		packager.reset();
+		resender.reset();
 	}
 	
 	public boolean start() {

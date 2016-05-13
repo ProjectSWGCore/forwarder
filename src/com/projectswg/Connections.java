@@ -16,11 +16,10 @@ import com.projectswg.networking.NetInterceptor.InterceptorProperties;
 import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.resources.ServerConnectionStatus;
 import com.projectswg.services.PacketRecordingService;
-import com.projectswg.utilities.Log;
 
 public class Connections extends Manager {
 	
-	public static final String VERSION = "0.9.4";
+	public static final String VERSION = "0.9.6";
 	
 	private final ServerConnection server;
 	private final ClientConnection client;
@@ -130,7 +129,6 @@ public class Connections extends Manager {
 	}
 	
 	private void processServerStatusChanged(ServerConnectionChangedIntent scci) {
-		Log.out(this, "Server Status Changed: %s -> %s", scci.getOldStatus(), scci.getStatus());
 		if (callback != null)
 			callback.onServerStatusChanged(scci.getOldStatus(), scci.getStatus());
 		if (scci.getStatus() != ServerConnectionStatus.CONNECTED && scci.getStatus() != ServerConnectionStatus.CONNECTING) {
@@ -142,27 +140,11 @@ public class Connections extends Manager {
 				error += "\nInstalled Version: " + VERSION;
 				client.send(new ErrorMessage("Network", error, false));
 			}
-			stop();
-			terminate();
-			boolean success = false;
-			while (!success) {
-				try { Thread.sleep(5); } catch (InterruptedException e) { break; }
-				success = initialize();
-				if (!success) {
-					terminate();
-					continue;
-				}
-				success = start();
-				if (!success) {
-					stop();
-					terminate();
-				}
-			}
+			client.hardReset();
 		}
 	}
 	
 	private void processClientStatusChanged(ClientConnectionChangedIntent ccci) {
-		Log.out(this, "Client Status Changed: %s -> %s", ccci.getOldStatus(), ccci.getStatus());
 		switch (ccci.getStatus()) {
 			case LOGIN_CONNECTED:
 				if (ccci.getOldStatus() == ClientConnectionStatus.DISCONNECTED)

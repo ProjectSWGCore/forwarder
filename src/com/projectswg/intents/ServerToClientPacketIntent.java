@@ -1,6 +1,6 @@
 package com.projectswg.intents;
 
-import network.packets.swg.SWGPacket;
+import network.PacketType;
 
 import com.projectswg.control.Intent;
 
@@ -8,25 +8,25 @@ public class ServerToClientPacketIntent extends Intent {
 	
 	public static final String TYPE = "ServerToClientPacketIntent";
 	
-	private SWGPacket packet;
+	private PacketType type;
 	private byte [] rawData;
 	
-	public ServerToClientPacketIntent(SWGPacket packet, byte [] rawData) {
+	public ServerToClientPacketIntent(PacketType type, byte [] rawData) {
 		super(TYPE);
-		setPacket(packet);
+		setPacketType(type);
 		setRawData(rawData);
 	}
 	
-	public SWGPacket getPacket() {
-		return packet;
+	public PacketType getPacketType() {
+		return type;
 	}
 	
 	public byte [] getRawData() {
 		return rawData;
 	}
 	
-	public void setPacket(SWGPacket packet) {
-		this.packet = packet;
+	public void setPacketType(PacketType type) {
+		this.type = type;
 	}
 	
 	public void setRawData(byte [] rawData) {

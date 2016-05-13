@@ -8,7 +8,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.SocketChannel;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.Locale;
 import java.util.Queue;
@@ -19,12 +18,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import resources.network.NetBufferStream;
 import network.PacketType;
-import network.packets.swg.SWGPacket;
-import network.packets.swg.holo.HoloConnectionStarted;
 import network.packets.swg.holo.HoloConnectionStopped;
 import network.packets.swg.holo.HoloSetProtocolVersion;
-import network.packets.swg.zone.object_controller.ObjectController;
-
 import com.projectswg.control.Intent;
 import com.projectswg.control.Manager;
 import com.projectswg.intents.ClientConnectionChangedIntent;
@@ -184,30 +179,21 @@ public class ServerConnection extends Manager {
 	
 	private void processPacketToSwg(byte [] packet) {
 		ByteBuffer data = ByteBuffer.wrap(packet).order(ByteOrder.LITTLE_ENDIAN);
-		int crc = data.getInt(2);
-		SWGPacket swg;
-		if (crc == 0x80CE5E46)
-			swg = ObjectController.decodeController(data);
-		else {
-			swg = PacketType.getForCrc(crc);
-			if (swg != null)
-				swg.decode(data);
-		}
-		if (swg != null)
-			processPacket(swg, packet);
-		else
-			Log.err(this, "Incoming packet is null! Data: " + Arrays.toString(packet));
+		PacketType type = PacketType.fromCrc(data.getInt(2));
+		processPacket(type, packet);
 	}
 	
-	private void processPacket(SWGPacket packet, byte [] raw) {
-		recvIntentChain.broadcastAfter(new ServerToClientPacketIntent(packet, raw), getIntentManager());
-		if (packet instanceof HoloConnectionStarted) {
+	private void processPacket(PacketType type, byte [] raw) {
+		recvIntentChain.broadcastAfter(new ServerToClientPacketIntent(type, raw), getIntentManager());
+		if (type == PacketType.HOLO_CONNECTION_STARTED) {
 			updateStatus(ServerConnectionStatus.CONNECTED);
 			while (!outQueue.isEmpty())
 				send(outQueue.poll());
 			Log.out(this, "Server connected");
-		} else if (packet instanceof HoloConnectionStopped) {
-			switch (((HoloConnectionStopped) packet).getReason()) {
+		} else if (type == PacketType.HOLO_CONNECTION_STOPPED) {
+			HoloConnectionStopped packet = new HoloConnectionStopped();
+			packet.decode(ByteBuffer.wrap(raw));
+			switch (packet.getReason()) {
 				case INVALID_PROTOCOL:
 					disconnect(ServerConnectionStatus.DISCONNECT_INVALID_PROTOCOL);
 					break;

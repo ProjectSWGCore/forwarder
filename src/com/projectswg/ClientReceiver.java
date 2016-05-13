@@ -65,19 +65,13 @@ public class ClientReceiver extends Service {
 		this.recvIntentChain = new IntentChain();
 		this.stateIntentChain = new IntentChain();
 		this.timeout = timeout;
+		this.status = ClientConnectionStatus.DISCONNECTED;
 	}
 	
 	@Override
 	public boolean initialize() {
 		registerForIntent(ClientSonyPacketIntent.TYPE);
-		rxSequence = -1;
-		lastPacket.set(0);
-		fragmentedBuffer.clear();
-		recvIntentChain.reset();
-		stateIntentChain.reset();
-		port = 0;
-		zone = false;
-		status = ClientConnectionStatus.DISCONNECTED;
+		hardReset();
 		return super.initialize();
 	}
 	
@@ -135,6 +129,17 @@ public class ClientReceiver extends Service {
 	
 	public void reset() {
 		rxSequence = -1;
+	}
+	
+	public void hardReset() {
+		setConnectionState(ClientConnectionStatus.DISCONNECTED);
+		rxSequence = -1;
+		lastPacket.set(0);
+		fragmentedBuffer.clear();
+		recvIntentChain.reset();
+		stateIntentChain.reset();
+		port = 0;
+		zone = false;
 	}
 	
 	public double getTimeSinceLastPacket() {
@@ -207,8 +212,6 @@ public class ClientReceiver extends Service {
 	}
 	
 	private void onSessionRequest(SessionRequest request) {
-		if (!zone)
-			setConnectionState(ClientConnectionStatus.DISCONNECTED);
 		if (zone) {
 			Log.out(this, "Zone Session Request");
 			setConnectionState(ClientConnectionStatus.ZONE_CONNECTED);

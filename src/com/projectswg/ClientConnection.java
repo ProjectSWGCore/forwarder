@@ -36,6 +36,11 @@ public class ClientConnection extends Manager {
 		return true;
 	}
 	
+	public void hardReset() {
+		sender.hardReset();
+		receiver.hardReset();
+	}
+	
 	public void setLoginPort(int loginPort) {
 		sender.setLoginPort(loginPort);
 	}
