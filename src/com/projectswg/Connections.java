@@ -17,6 +17,7 @@ import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.resources.ServerConnectionStatus;
 import com.projectswg.services.PacketRecordingService;
+import com.projectswg.utilities.Log;
 
 public class Connections extends Manager {
 	
@@ -132,7 +133,8 @@ public class Connections extends Manager {
 	private void processServerStatusChanged(ServerConnectionChangedIntent scci) {
 		if (callback != null)
 			callback.onServerStatusChanged(scci.getOldStatus(), scci.getStatus());
-		if (scci.getStatus() != ServerConnectionStatus.CONNECTED && scci.getStatus() != ServerConnectionStatus.CONNECTING) {
+		Log.out(this, "Status: %s  Connected: %b", scci.getStatus(), client.isConnected());
+		if (scci.getStatus() != ServerConnectionStatus.CONNECTED && scci.getStatus() != ServerConnectionStatus.CONNECTING && client.isConnected()) {
 			if (scci.getStatus() != ServerConnectionStatus.DISCONNECT_INVALID_PROTOCOL)
 				client.send(new ErrorMessage("Connection Update", "\n" + scci.getStatus().name().replace('_', ' '), false));
 			else {
@@ -143,6 +145,7 @@ public class Connections extends Manager {
 			}
 			try {
 				client.waitForClientAcknowledge();
+				Thread.sleep(100);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}

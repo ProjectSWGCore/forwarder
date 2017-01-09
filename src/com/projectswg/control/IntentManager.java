@@ -81,7 +81,8 @@ public class IntentManager {
 	protected void broadcastIntent(Intent i) {
 		if (i == null)
 			throw new NullPointerException("Intent cannot be null!");
-		Assert.test(initialized);
+		if (!initialized)
+			return;
 		synchronized (intentQueue) {
 			intentQueue.add(i);
 		}

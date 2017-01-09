@@ -42,6 +42,10 @@ public class ClientConnection extends Manager {
 		sender.send(new Disconnect(sender.getConnectionId(), reason));
 	}
 	
+	public boolean isConnected() {
+		return sender.isRunning();
+	}
+	
 	public void waitForClientAcknowledge() throws InterruptedException {
 		while (sender.getTransmittedSequence()-1 > receiver.getAckSequence()) {
 			Thread.sleep(1);
