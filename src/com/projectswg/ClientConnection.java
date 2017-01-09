@@ -6,6 +6,8 @@ import com.projectswg.control.Manager;
 import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.Packet;
 import com.projectswg.networking.NetInterceptor.InterceptorProperties;
+import com.projectswg.networking.soe.Disconnect;
+import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 
 public class ClientConnection extends Manager {
 	
@@ -34,6 +36,16 @@ public class ClientConnection extends Manager {
 		sender.setLoginCallback((packet) -> receiver.onPacket(false, packet));
 		sender.setZoneCallback((packet) -> receiver.onPacket(true, packet));
 		return true;
+	}
+	
+	public void disconnect(DisconnectReason reason) {
+		sender.send(new Disconnect(sender.getConnectionId(), reason));
+	}
+	
+	public void waitForClientAcknowledge() throws InterruptedException {
+		while (sender.getTransmittedSequence()-1 > receiver.getAckSequence()) {
+			Thread.sleep(1);
+		}
 	}
 	
 	public void hardReset() {

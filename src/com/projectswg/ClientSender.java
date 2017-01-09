@@ -102,6 +102,10 @@ public class ClientSender extends Service {
 		return super.stop();
 	}
 	
+	public short getTransmittedSequence() {
+		return packager.getSequence();
+	}
+	
 	@Override
 	public void onIntentReceived(Intent i) {
 		if (i instanceof ServerToClientPacketIntent) {

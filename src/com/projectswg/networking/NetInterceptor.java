@@ -67,7 +67,6 @@ public class NetInterceptor {
 			g.setAddress("127.0.0.1");
 			g.setZonePort((short) properties.getPort());
 			g.setPingPort((short) properties.getPort());
-			g.setPopulation(-1);
 		}
 		return cluster.encode().array();
 	}

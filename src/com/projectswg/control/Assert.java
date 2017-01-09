@@ -25,45 +25,77 @@
 * along with Holocore.  If not, see <http://www.gnu.org/licenses/>.                *
 *                                                                                  *
 ***********************************************************************************/
-package com.projectswg.networking.soe;
+package com.projectswg.control;
 
-import java.nio.ByteBuffer;
+import resources.server_info.Log;
 
-import resources.control.Assert;
-
-import com.projectswg.networking.Packet;
-
-public class Acknowledge extends Packet {
+public class Assert {
 	
-	private short sequence;
+	private static volatile AssertLevel level = AssertLevel.ASSERT;
 	
-	public Acknowledge() {
-		sequence = 0;
+	public static void setLevel(AssertLevel level) {
+		Assert.level = level;
 	}
 	
-	public Acknowledge(ByteBuffer data) {
-		decode(data);
+	public static boolean debug() {
+		return level != AssertLevel.IGNORE;
 	}
 	
-	public Acknowledge(short sequence) {
-		this.sequence = sequence;
+	public static void notNull(Object o) {
+		if (debug() && o == null)
+			handle(new NullPointerException());
 	}
 	
-	public void decode(ByteBuffer data) {
-		Assert.test(data.array().length == 4);
-		data.position(2);
-		sequence = getNetShort(data);
+	public static void isNull(Object o) {
+		if (debug() && o != null)
+			handle(new AssertionException());
 	}
 	
-	public ByteBuffer encode() {
-		ByteBuffer data = ByteBuffer.allocate(4);
-		addNetShort(data, 21);
-		addNetShort(data, sequence);
-		return data;
+	public static void test(boolean expr) {
+		if (debug() && !expr)
+			handle(new AssertionException());
 	}
 	
-	public void setSequence(short sequence) { this.sequence = sequence; }
+	public static void fail() {
+		if (debug())
+			handle(new AssertionException());
+	}
 	
-	public short getSequence() { return sequence; }
+	private static void handle(RuntimeException e) {
+		AssertLevel level = Assert.level;
+		switch (level) {
+			case WARN:
+				warn(e);
+				break;
+			case ASSERT:
+				throw e;
+			default:
+				break;
+		}
+	}
+	
+	private static void warn(Exception e) {
+		StackTraceElement [] elements = e.getStackTrace();
+		if (elements.length <= 1)
+			Log.e("Assert", e);
+		else
+			Log.e(elements[elements.length-2].getClassName(), e);
+	}
+	
+	private static class AssertionException extends RuntimeException {
+		
+		private static final long serialVersionUID = 1L;
+		
+		public AssertionException() {
+			super("");
+		}
+		
+	}
+	
+	public enum AssertLevel {
+		IGNORE,
+		WARN,
+		ASSERT
+	}
 	
 }

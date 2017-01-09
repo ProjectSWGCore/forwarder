@@ -13,6 +13,7 @@ import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.networking.NetInterceptor.InterceptorProperties;
+import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.resources.ServerConnectionStatus;
 import com.projectswg.services.PacketRecordingService;
@@ -140,6 +141,12 @@ public class Connections extends Manager {
 				error += "\nInstalled Version: " + VERSION;
 				client.send(new ErrorMessage("Network", error, false));
 			}
+			try {
+				client.waitForClientAcknowledge();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			client.disconnect(DisconnectReason.OTHER_SIDE_TERMINATED);
 			client.hardReset();
 		}
 	}

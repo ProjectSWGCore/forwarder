@@ -52,7 +52,6 @@ public class IntentManager {
 	public IntentManager() {
 		intentRegistrations = new HashMap<String, Set<IntentReceiver>>();
 		intentQueue = new IntentQueue();
-		initialize();
 		broadcastRunnable = () -> {
 			Intent i;
 			synchronized (intentQueue) {
@@ -82,8 +81,7 @@ public class IntentManager {
 	protected void broadcastIntent(Intent i) {
 		if (i == null)
 			throw new NullPointerException("Intent cannot be null!");
-		if (!initialized)
-			return;
+		Assert.test(initialized);
 		synchronized (intentQueue) {
 			intentQueue.add(i);
 		}

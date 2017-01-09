@@ -55,6 +55,7 @@ public class ClientReceiver extends Service {
 	private ClientSender sender;
 	private ClientConnectionStatus status;
 	private short rxSequence;
+	private short ackSequence;
 	private int port;
 	private boolean zone;
 	
@@ -66,6 +67,8 @@ public class ClientReceiver extends Service {
 		this.stateIntentChain = new IntentChain();
 		this.timeout = timeout;
 		this.status = ClientConnectionStatus.DISCONNECTED;
+		this.rxSequence = -1;
+		this.ackSequence = -1;
 	}
 	
 	@Override
@@ -120,11 +123,17 @@ public class ClientReceiver extends Service {
 				onDataChannel((DataChannelA) p);
 			else if (p instanceof Fragmented)
 				onFragmented((Fragmented) p);
+			else if (p instanceof Acknowledge)
+				onAcknowledge((Acknowledge) p);
 		}
 	}
 	
 	public void setClientSender(ClientSender sender) {
 		this.sender = sender;
+	}
+	
+	public short getAckSequence() {
+		return ackSequence;
 	}
 	
 	public void reset() {
@@ -299,6 +308,10 @@ public class ClientReceiver extends Service {
 		}
 		combined.flip();
 		process(combined);
+	}
+	
+	private void onAcknowledge(Acknowledge ack) {
+		this.ackSequence = ack.getSequence();
 	}
 	
 	private void onSWGPacket(byte [] data) {
