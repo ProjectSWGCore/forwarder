@@ -1,11 +1,11 @@
 package com.projectswg;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicLong;
 
 import network.packets.swg.ErrorMessage;
 
-import com.projectswg.control.Intent;
 import com.projectswg.control.IntentManager;
 import com.projectswg.control.Manager;
 import com.projectswg.intents.ClientConnectionChangedIntent;
@@ -13,18 +13,21 @@ import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.networking.NetInterceptor.InterceptorProperties;
+import com.projectswg.networking.client.ClientConnectionService;
+import com.projectswg.networking.server.ServerConnectionService;
+import com.projectswg.networking.server.ServerConnectionChangedReason;
 import com.projectswg.networking.soe.Disconnect.DisconnectReason;
-import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.resources.ServerConnectionStatus;
 import com.projectswg.services.PacketRecordingService;
 import com.projectswg.utilities.Log;
+import com.projectswg.utilities.ThreadUtilities;
 
 public class Connections extends Manager {
 	
-	public static final String VERSION = "0.9.6";
+	public static final String VERSION = "0.9.8";
 	
-	private final ServerConnection server;
-	private final ClientConnection client;
+	private final ServerConnectionService server;
+	private final ClientConnectionService client;
 	private final PacketRecordingService recording;
 	private final AtomicLong serverToClient;
 	private final AtomicLong clientToServer;
@@ -38,14 +41,15 @@ public class Connections extends Manager {
 	
 	public Connections(InetAddress remoteAddr, int remotePort, int loginPort, boolean timeout) {
 		setIntentManager(new IntentManager());
-		this.addr = remoteAddr;
-		this.port = remotePort;
-		server = new ServerConnection(remoteAddr, remotePort);
-		client = new ClientConnection(loginPort, timeout);
-		recording = new PacketRecordingService();
-		serverToClient = new AtomicLong(0);
-		clientToServer = new AtomicLong(0);
-		callback = null;
+		this.server = new ServerConnectionService(remoteAddr, remotePort);
+		this.client = new ClientConnectionService(loginPort, timeout);
+		this.recording = new PacketRecordingService();
+		this.serverToClient = new AtomicLong(0);
+		this.clientToServer = new AtomicLong(0);
+		this.callback = null;
+		this.addr = null;
+		this.port = 0;
+		setRemote(remoteAddr, remotePort);
 		
 		addChildService(server);
 		addChildService(client);
@@ -55,40 +59,17 @@ public class Connections extends Manager {
 	@Override
 	public boolean initialize() {
 		getIntentManager().initialize();
-		registerForIntent(ClientConnectionChangedIntent.TYPE);
-		registerForIntent(ServerConnectionChangedIntent.TYPE);
-		registerForIntent(ClientToServerPacketIntent.TYPE);
-		registerForIntent(ServerToClientPacketIntent.TYPE);
+		registerForIntent(ClientConnectionChangedIntent.class, ccci -> processClientStatusChanged(ccci));
+		registerForIntent(ServerConnectionChangedIntent.class, scci -> processServerStatusChanged(scci));
+		registerForIntent(ClientToServerPacketIntent.class, ctspi -> onDataClientToServer(ctspi.getData()));
+		registerForIntent(ServerToClientPacketIntent.class, stcpi -> onDataServerToClient(stcpi.getRawData()));
 		return super.initialize();
 	}
 	
 	@Override
 	public boolean terminate() {
-		boolean term = super.terminate();
 		getIntentManager().terminate();
-		return term;
-	}
-	
-	@Override
-	public void onIntentReceived(Intent i) {
-		switch (i.getType()) {
-			case ClientConnectionChangedIntent.TYPE:
-				if (i instanceof ClientConnectionChangedIntent)
-					processClientStatusChanged((ClientConnectionChangedIntent) i);
-				break;
-			case ServerConnectionChangedIntent.TYPE:
-				if (i instanceof ServerConnectionChangedIntent)
-					processServerStatusChanged((ServerConnectionChangedIntent) i);
-				break;
-			case ServerToClientPacketIntent.TYPE:
-				if (i instanceof ServerToClientPacketIntent)
-					onDataServerToClient(((ServerToClientPacketIntent) i).getRawData());
-				break;
-			case ClientToServerPacketIntent.TYPE:
-				if (i instanceof ClientToServerPacketIntent)
-					onDataClientToServer(((ClientToServerPacketIntent) i).getData());
-				break;
-		}
+		return super.terminate();
 	}
 	
 	public void setCallback(ConnectionCallback callback) {
@@ -96,8 +77,9 @@ public class Connections extends Manager {
 	}
 	
 	public boolean setRemote(InetAddress addr, int port) {
-		if (this.addr.equals(addr) && this.port == port)
-			return false;
+		this.addr = addr;
+		this.port = port;
+		recording.setAddress(new InetSocketAddress("::1", 0), server.getRemoteAddress());
 		server.setRemoteAddress(addr, port);
 		return true;
 	}
@@ -133,36 +115,34 @@ public class Connections extends Manager {
 	private void processServerStatusChanged(ServerConnectionChangedIntent scci) {
 		if (callback != null)
 			callback.onServerStatusChanged(scci.getOldStatus(), scci.getStatus());
-		Log.out(this, "Status: %s  Connected: %b", scci.getStatus(), client.isConnected());
-		if (scci.getStatus() != ServerConnectionStatus.CONNECTED && scci.getStatus() != ServerConnectionStatus.CONNECTING && client.isConnected()) {
-			if (scci.getStatus() != ServerConnectionStatus.DISCONNECT_INVALID_PROTOCOL)
-				client.send(new ErrorMessage("Connection Update", "\n" + scci.getStatus().name().replace('_', ' '), false));
-			else {
-				String error = "\nInvalid protocol version!";
-				error += "\nTry updating your launcher to the latest version.";
-				error += "\nInstalled Version: " + VERSION;
-				client.send(new ErrorMessage("Network", error, false));
+		if (scci.getStatus() == ServerConnectionStatus.DISCONNECTED && scci.getReason() != ServerConnectionChangedReason.CLIENT_DISCONNECT) {
+			Log.out(this, "Shutting down client due to server status: %s and reason %s", scci.getStatus(), scci.getReason());
+			String title = "";
+			String text = "";
+			if (scci.getReason() != ServerConnectionChangedReason.INVALID_PROTOCOL) {
+				title = "Connection Lost";
+				text = "\n" + scci.getReason().name().replace('_', ' ');
+			} else {
+				title = "Network";
+				text  = "\nInvalid protocol version!";
+				text += "\nTry updating your launcher to the latest version.";
+				text += "\nInstalled Version: " + VERSION;
 			}
-			try {
-				client.waitForClientAcknowledge();
-				Thread.sleep(100);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
+			client.sendPackaged(new ErrorMessage(title, text, false));
+			client.waitForClientAcknowledge();
+			ThreadUtilities.sleep(100);
 			client.disconnect(DisconnectReason.OTHER_SIDE_TERMINATED);
-			client.hardReset();
+			client.restart();
 		}
 	}
 	
 	private void processClientStatusChanged(ClientConnectionChangedIntent ccci) {
 		switch (ccci.getStatus()) {
 			case LOGIN_CONNECTED:
-				if (ccci.getOldStatus() == ClientConnectionStatus.DISCONNECTED)
-					onClientConnected();
+				onClientConnected();
 				break;
 			case DISCONNECTED:
-				if (ccci.getOldStatus() != ClientConnectionStatus.DISCONNECTED)
-					onClientDisconnected();
+				onClientDisconnected();
 				break;
 			default:
 				break;
@@ -170,7 +150,6 @@ public class Connections extends Manager {
 	}
 	
 	private void onClientConnected() {
-		server.start();
 		if (callback != null)
 			callback.onClientConnected();
 	}

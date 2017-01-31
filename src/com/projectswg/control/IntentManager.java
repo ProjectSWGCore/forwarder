@@ -35,6 +35,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import com.projectswg.utilities.Log;
 import com.projectswg.utilities.ThreadUtilities;
@@ -64,7 +65,7 @@ public class IntentManager {
 	
 	public void initialize() {
 		if (!initialized) {
-			broadcastThreads = Executors.newFixedThreadPool(3, ThreadUtilities.newThreadFactory("intent-manager-%d"));
+			broadcastThreads = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()*4, ThreadUtilities.newThreadFactory("intent-manager-%d"));
 			initialized = true;
 			terminated = false;
 		}
@@ -75,6 +76,11 @@ public class IntentManager {
 			initialized = false;
 			terminated = true;
 			broadcastThreads.shutdown();
+			try {
+				broadcastThreads.awaitTermination(3, TimeUnit.SECONDS);
+			} catch (InterruptedException e) {
+				
+			}
 		}
 	}
 	

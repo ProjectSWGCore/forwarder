@@ -29,8 +29,7 @@ package com.projectswg.networking.soe;
 
 import java.nio.ByteBuffer;
 
-import resources.control.Assert;
-
+import com.projectswg.control.Assert;
 import com.projectswg.networking.Packet;
 
 public class Acknowledge extends Packet {

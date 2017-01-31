@@ -1,8 +1,7 @@
 package com.projectswg.intents;
 
-import java.net.InetSocketAddress;
-
 import com.projectswg.control.Intent;
+import com.projectswg.networking.server.ServerConnectionChangedReason;
 import com.projectswg.resources.ServerConnectionStatus;
 
 public class ServerConnectionChangedIntent extends Intent {
@@ -11,47 +10,37 @@ public class ServerConnectionChangedIntent extends Intent {
 	
 	private ServerConnectionStatus old;
 	private ServerConnectionStatus status;
-	private InetSocketAddress source;
-	private InetSocketAddress destination;
+	private ServerConnectionChangedReason reason;
 	
-	public ServerConnectionChangedIntent(ServerConnectionStatus old, ServerConnectionStatus status) {
+	public ServerConnectionChangedIntent(ServerConnectionStatus old, ServerConnectionStatus status, ServerConnectionChangedReason reason) {
 		super(TYPE);
 		setOldStatus(old);
 		setStatus(status);
-		setSource(null);
-		setDestination(null);
+		setReason(reason);
 	}
 	
 	public ServerConnectionStatus getStatus() {
 		return status;
 	}
 	
-	public void setStatus(ServerConnectionStatus status) {
-		this.status = status;
-	}
-	
 	public ServerConnectionStatus getOldStatus() {
 		return old;
+	}
+	
+	public ServerConnectionChangedReason getReason() {
+		return reason;
+	}
+	
+	public void setStatus(ServerConnectionStatus status) {
+		this.status = status;
 	}
 	
 	public void setOldStatus(ServerConnectionStatus old) {
 		this.old = old;
 	}
 	
-	public InetSocketAddress getSource() {
-		return source;
-	}
-	
-	public void setSource(InetSocketAddress source) {
-		this.source = source;
-	}
-	
-	public InetSocketAddress getDestination() {
-		return destination;
-	}
-	
-	public void setDestination(InetSocketAddress destination) {
-		this.destination = destination;
+	public void setReason(ServerConnectionChangedReason reason) {
+		this.reason = reason;
 	}
 	
 }

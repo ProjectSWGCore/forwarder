@@ -1,53 +1,43 @@
-package com.projectswg.networking.sender;
+package com.projectswg.networking.client.sender;
 
 import java.util.LinkedList;
 import java.util.Queue;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
+import com.projectswg.concurrency.PswgBasicScheduledThread;
+import com.projectswg.networking.client.ClientPacketSender;
 import com.projectswg.networking.soe.SequencedPacket;
-import com.projectswg.utilities.ThreadUtilities;
 
+/**
+ * This class is in charge of resending any unacknowledged packets
+ */
 public class PacketResender {
 	
 	private static final long RESEND_DELAY = 25;
 	
-	private final AtomicBoolean running;
 	private Queue<SequencedOutbound> sentPackets;
-	private final PacketSender sender;
-	private ScheduledExecutorService executor;
+	private final ClientPacketSender sender;
+	private PswgBasicScheduledThread resender;
 	private SenderMode mode;
 	
-	public PacketResender(PacketSender sender) {
+	public PacketResender(ClientPacketSender sender) {
 		this.sender = sender;
-		this.running = new AtomicBoolean(false);
 		this.sentPackets = new LinkedList<>();
-		this.executor = null;
+		this.resender = new PswgBasicScheduledThread("packet-resender", () -> resendRunnable());
 		this.mode = SenderMode.FASTEST;
 	}
 	
 	public void start() {
-		if (running.getAndSet(true))
-			return;
-		executor = Executors.newSingleThreadScheduledExecutor(ThreadUtilities.newThreadFactory("packet-resender"));
-		executor.execute(() -> resendRunnable());
-		executor.scheduleWithFixedDelay(()->resendRunnable(), RESEND_DELAY, RESEND_DELAY, TimeUnit.MILLISECONDS);
+		resender.startWithFixedDelay(0, RESEND_DELAY);
 	}
 	
 	public void stop() {
-		if (!running.getAndSet(false))
-			return;
-		executor.shutdownNow();
-		try {
-			executor.awaitTermination(1, TimeUnit.SECONDS);
-		} catch (InterruptedException e) {
-			
+		resender.stop();
+		resender.awaitTermination(1000);
+		synchronized (sentPackets) {
+			sentPackets.clear();
 		}
 	}
 	
-	public void reset() {
+	public void restart() {
 		synchronized (sentPackets) {
 			sentPackets.clear();
 		}
@@ -59,7 +49,7 @@ public class PacketResender {
 			sentPackets.add(out);
 		}
 		if (mode != SenderMode.DEBUG) {
-			sender.send(data);
+			sender.sendRaw(data);
 			out.updateTimeSinceSent();
 		}
 	}
@@ -69,7 +59,7 @@ public class PacketResender {
 			for (SequencedOutbound packet : sentPackets) {
 				if (packet.getSequence() <= sequence) {
 					if (packet.getTimeSinceSent() >= 100) {
-						sender.send(packet.getData());
+						sender.sendRaw(packet.getData());
 						packet.updateTimeSinceSent();
 					}
 				} else
@@ -96,17 +86,13 @@ public class PacketResender {
 		synchronized (sentPackets) {
 			for (SequencedOutbound packet : sentPackets) {
 				if (packet.getTimeSinceSent() >= mode.getAcknowledgeTime()) {
-					sender.send(packet.getData());
+					sender.sendRaw(packet.getData());
 					packet.updateTimeSinceSent();
 				}
 				if (++count >= mode.getMax())
 					break;
 			}
 		}
-	}
-	
-	public interface PacketSender {
-		void send(byte [] data);
 	}
 	
 	private static class SequencedOutbound implements SequencedPacket {

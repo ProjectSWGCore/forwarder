@@ -28,8 +28,23 @@
 package com.projectswg.utilities;
 
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.locks.LockSupport;
 
 public class ThreadUtilities {
+	
+	public static boolean sleep(long time) {
+		return sleepNano(time * 1000000);
+	}
+	
+	public static boolean sleepNano(long time) {
+		LockSupport.parkNanos(time);
+		return Thread.currentThread().isInterrupted();
+	}
+	
+	public static boolean sleepUntil(long milliSinceEpoch) {
+		LockSupport.parkUntil(milliSinceEpoch);
+		return Thread.currentThread().isInterrupted();
+	}
 	
 	public static ThreadFactory newThreadFactory(String pattern) {
 		return new CustomThreadFactory(pattern);

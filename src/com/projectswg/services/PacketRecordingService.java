@@ -3,123 +3,110 @@ package com.projectswg.services;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.projectswg.control.Intent;
+import com.projectswg.control.Assert;
 import com.projectswg.control.Service;
-import com.projectswg.intents.ClientConnectionChangedIntent;
 import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.recording.PacketRecorder;
-import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.resources.ServerConnectionStatus;
+import com.projectswg.utilities.Log;
 
 public class PacketRecordingService extends Service {
 	
-	private final AtomicBoolean recording;
+	private final Object recordingMutex;
 	
 	private File recorderFile;
 	private PacketRecorder recorder;
-	private ClientConnectionStatus clientStatus;
 	private ServerConnectionStatus serverStatus;
 	private InetSocketAddress source;
 	private InetSocketAddress destination;
+	private boolean recording;
 	
 	public PacketRecordingService() {
-		this.recording = new AtomicBoolean(false);
-		recorderFile = null;
-		recorder = null;
-		clientStatus = ClientConnectionStatus.DISCONNECTED;
-		serverStatus = ServerConnectionStatus.DISCONNECTED;
-		source = null;
-		destination = null;
+		this.recordingMutex = new Object();
+		this.recorderFile = null;
+		this.recorder = null;
+		this.serverStatus = ServerConnectionStatus.DISCONNECTED;
+		this.source = null;
+		this.destination = null;
+		this.recording = false;
 	}
 	
 	@Override
 	public boolean initialize() {
-		registerForIntent(ServerToClientPacketIntent.TYPE);
-		registerForIntent(ClientToServerPacketIntent.TYPE);
-		registerForIntent(ClientConnectionChangedIntent.TYPE);
-		registerForIntent(ServerConnectionChangedIntent.TYPE);
+		registerForIntent(ServerToClientPacketIntent.class, stcpi -> onServerToClient(stcpi));
+		registerForIntent(ClientToServerPacketIntent.class, ctspi -> onClientToServer(ctspi));
+		registerForIntent(ServerConnectionChangedIntent.class, scci -> onServerStatusChanged(scci));
 		return super.initialize();
 	}
 	
-	@Override
-	public void onIntentReceived(Intent i) {
-		switch (i.getType()) {
-			case ServerToClientPacketIntent.TYPE:
-				if (i instanceof ServerToClientPacketIntent)
-					onServerToClient((ServerToClientPacketIntent) i);
-				break;
-			case ClientToServerPacketIntent.TYPE:
-				if (i instanceof ClientToServerPacketIntent)
-					onClientToServer((ClientToServerPacketIntent) i);
-				break;
-			case ClientConnectionChangedIntent.TYPE:
-				if (i instanceof ClientConnectionChangedIntent)
-					onClientStatusChanged((ClientConnectionChangedIntent) i);
-				break;
-			case ServerConnectionChangedIntent.TYPE:
-				if (i instanceof ServerConnectionChangedIntent)
-					onServerStatusChanged((ServerConnectionChangedIntent) i);
-				break;
-		}
+	public void setAddress(InetSocketAddress source, InetSocketAddress destination) {
+		this.source = source;
+		this.destination = destination;
 	}
 	
 	private void startRecording() {
-		if (recording.getAndSet(true))
-			return;
-		try {
-			recorderFile = File.createTempFile("HolocoreRecording", ".hcap");
-			recorder = new PacketRecorder(recorderFile);
-		} catch (IOException e) {
-			e.printStackTrace();
-			recorderFile = null;
-			recorder = null;
-			recording.set(false);
+		synchronized (recordingMutex) {
+			Assert.test(!recording);
+			recording = true;
+			try {
+				recorderFile = File.createTempFile("HolocoreRecording", ".hcap");
+				recorder = new PacketRecorder(recorderFile);
+			} catch (IOException e) {
+				Log.err(this, e);
+				recorderFile = null;
+				recorder = null;
+				recording = false;
+			}
 		}
 	}
 	
 	private void stopRecording() {
-		if (!recording.getAndSet(false))
-			return;
-		try {
-			recorder.close();
-		} catch (IOException e) {
-			e.printStackTrace();
+		synchronized (recordingMutex) {
+			Assert.test(recording);
+			recording = false;
+			try {
+				recorder.close();
+			} catch (IOException e) {
+				Log.err(this, e);
+			}
 		}
-	}
-	
-	private void onClientStatusChanged(ClientConnectionChangedIntent ccci) {
-		this.clientStatus = ccci.getStatus();
-		updateRecordingState();
 	}
 	
 	private void onServerStatusChanged(ServerConnectionChangedIntent scci) {
 		this.serverStatus = scci.getStatus();
-		this.source = scci.getSource();
-		this.destination = scci.getDestination();
 		updateRecordingState();
 	}
 	
 	private void updateRecordingState() {
-		if (clientStatus != ClientConnectionStatus.DISCONNECTED && serverStatus == ServerConnectionStatus.CONNECTING)
-			startRecording();
-		else if (clientStatus == ClientConnectionStatus.DISCONNECTED)
-			stopRecording();
+		switch (serverStatus) {
+			case CONNECTING:
+				startRecording();
+				break;
+			case DISCONNECTED:
+				stopRecording();
+				break;
+			default:
+				break;
+		}
 	}
 	
 	private void onServerToClient(ServerToClientPacketIntent s2c) {
-		if (!recording.get())
-			return;
-		recorder.record(true, destination, source, s2c.getRawData());
+		synchronized (recordingMutex) {
+			if (!recording)
+				return;
+			recorder.record(true, destination, source, s2c.getRawData());
+		}
 	}
 	
 	private void onClientToServer(ClientToServerPacketIntent c2s) {
-		if (!recording.get())
-			return;
-		recorder.record(false, source, destination, c2s.getData());
+		synchronized (recordingMutex) {
+			if (!recording)
+				return;
+			recorder.record(false, source, destination, c2s.getData());
+		}
 	}
 	
 }

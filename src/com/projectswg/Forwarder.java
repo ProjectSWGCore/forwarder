@@ -7,7 +7,6 @@ import java.util.concurrent.Executors;
 
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.event.EventHandler;
 import javafx.scene.Scene;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
@@ -16,8 +15,6 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
-import javafx.stage.WindowEvent;
-
 import com.projectswg.Connections.ConnectionCallback;
 import com.projectswg.resources.ServerConnectionStatus;
 import com.projectswg.utilities.Log;
@@ -127,15 +124,13 @@ public class Forwarder extends Application implements ConnectionCallback {
 		root.setOnMouseClicked((event) -> root.requestFocus());
 		root.requestFocus();
 		primaryStage.show();
-		primaryStage.setOnCloseRequest(new EventHandler<WindowEvent>() {
-			public void handle(WindowEvent we) {
-				try {
-					connections.stop();
-				} catch (Exception e) {
-					Log.err(this, e);
-				}
-				primaryStage.close();
+		primaryStage.setOnCloseRequest(we -> {
+			try {
+				connections.stop();
+			} catch (Exception e) {
+				Log.err(this, e);
 			}
+			primaryStage.close();
 		});
 	}
 	

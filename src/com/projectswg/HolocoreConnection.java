@@ -8,6 +8,7 @@ import com.projectswg.Connections.ConnectionCallback;
 import com.projectswg.networking.NetInterceptor.InterceptorProperties;
 import com.projectswg.resources.HolocorePreferences;
 import com.projectswg.utilities.Log;
+import com.projectswg.utilities.ThreadUtilities;
 
 public class HolocoreConnection {
 	
@@ -57,10 +58,9 @@ public class HolocoreConnection {
 				Log.err(this, "Failed to initialize");
 				connections.stop();
 				connections.terminate();
-				try {
-					Thread.sleep(50);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
+				if (!ThreadUtilities.sleep(50)) {
+					Log.err(this, "Interrupted while connecting!");
+					return;
 				}
 				loginPort++;
 			}

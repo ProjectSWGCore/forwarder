@@ -15,6 +15,8 @@ import java.util.Map.Entry;
 import java.util.TimeZone;
 import java.util.TreeMap;
 
+import com.projectswg.control.Assert;
+
 public class PacketRecorder implements AutoCloseable, Closeable {
 	
 	private static final byte VERSION = 1;
@@ -48,6 +50,8 @@ public class PacketRecorder implements AutoCloseable, Closeable {
 	}
 	
 	private void recordSocketAddress(InetSocketAddress addr) throws IOException {
+		Assert.notNull(addr);
+		Assert.test(!addr.isUnresolved());
 		byte [] raw = addr.getAddress().getAddress();
 		dataOut.writeByte(raw.length);
 		dataOut.write(raw);

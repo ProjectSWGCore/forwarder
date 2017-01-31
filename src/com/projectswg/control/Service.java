@@ -27,12 +27,12 @@
 ***********************************************************************************/
 package com.projectswg.control;
 
-import com.projectswg.utilities.Log;
+import java.util.function.Consumer;
 
 /**
  * A Service is a class that does a specific job for the application
  */
-public abstract class Service implements IntentReceiver {
+public abstract class Service {
 	
 	private IntentManager intentManager;
 	
@@ -85,27 +85,18 @@ public abstract class Service implements IntentReceiver {
 		return true;
 	}
 	
-	/**
-	 * Registers for the specified intent string
-	 * @param type the intent string
-	 */
-	public void registerForIntent(String type) {
-		intentManager.registerForIntent(type, this);
+	@SuppressWarnings("unchecked")
+	protected final <T extends Intent> void registerForIntent(Class<T> c, Consumer<T> consumer) {
+		try {
+			String type = (String) c.getDeclaredField("TYPE").get(null);
+			intentManager.registerForIntent(type, (i) -> consumer.accept((T) i));
+		} catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException | SecurityException e) {
+			e.printStackTrace();
+		}
 	}
 	
-	/**
-	 * Unregisters for the specified intent string
-	 * @param type the intent string
-	 */
-	public void unregisterForIntent(String type) {
-		intentManager.unregisterForIntent(type, this);
-	}
-	
-	/**
-	 * Callback when an intent is received from the system
-	 */
-	public void onIntentReceived(Intent i) {
-		Log.out(this, "Warning: " + getClass().getSimpleName() + " did not override onIntentReceived");
+	public void broadcast(Intent i) {
+		i.broadcast(intentManager);
 	}
 	
 	/**

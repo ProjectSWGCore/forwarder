@@ -36,7 +36,7 @@ import com.projectswg.networking.Packet;
 public class SessionRequest extends Packet {
 	
 	private int crcLength;
-	private int connectionID;
+	private int connectionId;
 	private int udpSize;
 	
 	public SessionRequest() {
@@ -47,9 +47,9 @@ public class SessionRequest extends Packet {
 		decode(data);
 	}
 	
-	public SessionRequest(int crcLength, int connectionID, int udpSize) {
+	public SessionRequest(int crcLength, int connectionId, int udpSize) {
 		this.crcLength    = crcLength;
-		this.connectionID = connectionID;
+		this.connectionId = connectionId;
 		this.udpSize      = udpSize;
 	}
 	
@@ -57,7 +57,7 @@ public class SessionRequest extends Packet {
 		super.decode(packet);
 		packet.position(2);
 		crcLength    = getNetInt(packet);
-		connectionID = getNetInt(packet);
+		connectionId = getNetInt(packet);
 		udpSize      = getNetInt(packet);
 	}
 	
@@ -65,12 +65,12 @@ public class SessionRequest extends Packet {
 		ByteBuffer bb = ByteBuffer.allocate(14).order(ByteOrder.BIG_ENDIAN);
 		addNetShort(bb, 1);
 		addNetInt(bb, crcLength);
-		addNetInt(bb, connectionID);
+		addNetInt(bb, connectionId);
 		addNetInt(bb, udpSize);
 		return bb;
 	}
 	
 	public int getCrcLength()    { return crcLength; }
-	public int getConnectionID() { return connectionID; }
+	public int getConnectionId() { return connectionId; }
 	public int getUdpSize()      { return udpSize; }
 }

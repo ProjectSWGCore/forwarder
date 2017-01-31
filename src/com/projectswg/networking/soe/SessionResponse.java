@@ -35,7 +35,7 @@ import com.projectswg.networking.Packet;
 
 public class SessionResponse extends Packet {
 	
-	private int   connectionID;
+	private int   connectionId;
 	private int   crcSeed;
 	private byte  crcLength;
 	private byte encryptionFlag;
@@ -50,13 +50,8 @@ public class SessionResponse extends Packet {
 		decode(data);
 	}
 	
-	public SessionResponse(int connectionID,
-			int crcSeed,
-			byte crcLength,
-			byte encryptionFlag,
-			byte xorLength,
-			int udpSize) {
-		this.connectionID   = connectionID;
+	public SessionResponse(int connectionId, int crcSeed, byte crcLength, byte encryptionFlag, byte xorLength, int udpSize) {
+		this.connectionId   = connectionId;
 		this.crcSeed        = crcSeed;
 		this.crcLength      = crcLength;
 		this.encryptionFlag = encryptionFlag;
@@ -67,7 +62,7 @@ public class SessionResponse extends Packet {
 	public void decode(ByteBuffer data) {
 		super.decode(data);
 		data.position(2);
-		connectionID   = getNetInt(data);
+		connectionId   = getNetInt(data);
 		crcSeed        = getNetInt(data);
 		crcLength      = data.get();
 		encryptionFlag = data.get();
@@ -78,7 +73,7 @@ public class SessionResponse extends Packet {
 	public ByteBuffer encode() {
 		ByteBuffer bb = ByteBuffer.allocate(17).order(ByteOrder.BIG_ENDIAN);
 		addNetShort(bb, 2);
-		addNetInt(  bb, connectionID);
+		addNetInt(  bb, connectionId);
 		addNetInt(  bb, crcSeed);
 		addByte(    bb, crcLength);
 		addByte(    bb, encryptionFlag);
@@ -87,14 +82,14 @@ public class SessionResponse extends Packet {
 		return bb;
 	}
 	
-	public int   getConnectionID()   { return connectionID; }
+	public int   getConnectionId()   { return connectionId; }
 	public int   getCrcSeed()        { return crcSeed; }
 	public byte  getCrcLength()      { return crcLength; }
 	public short getEncryptionFlag() { return encryptionFlag; }
 	public byte  getXorLength()      { return xorLength; }
 	public int   getUdpSize()        { return udpSize; }
 	
-	public void setConnectionID(int id)			{ this.connectionID = id; }
+	public void setConnectionId(int id)			{ this.connectionId = id; }
 	public void setCrcSeed(int crc) 			{ this.crcSeed = crc; }
 	public void setCrcLength(int length)		{ this.crcLength = (byte) length; }
 	public void setEncryptionFlag(short flag)	{ this.encryptionFlag = (byte) flag; }

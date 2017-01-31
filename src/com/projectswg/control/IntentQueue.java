@@ -40,17 +40,17 @@ class IntentQueue implements Queue<Intent> {
 	
 	@Override
 	public Iterator iterator() {
-		return new Iterator();
+		return new Iterator(this, head, head);
 	}
 
 	@Override
 	public Object [] toArray() {
-		return null;
+		throw new UnsupportedOperationException();
 	}
 	
 	@Override
 	public <T> T [] toArray(T [] a) {
-		return null;
+		throw new UnsupportedOperationException();
 	}
 	
 	@Override
@@ -163,21 +163,29 @@ class IntentQueue implements Queue<Intent> {
 		return head.left.intent;
 	}
 	
-	private class Iterator implements java.util.Iterator<Intent> {
+	protected int getModificationCount() {
+		return modificationCount;
+	}
+	
+	private static class Iterator implements java.util.Iterator<Intent> {
 		
+		private final IntentQueue queue;
 		private final int modificationCount;
+		private final Node termination;
 		private Node currentNode;
 		
-		public Iterator() {
-			this.modificationCount = IntentQueue.this.modificationCount;
-			this.currentNode = IntentQueue.this.head;
+		private Iterator(IntentQueue queue, Node start, Node stop) {
+			this.queue = queue;
+			this.modificationCount = queue.getModificationCount();
+			this.currentNode = start;
+			this.termination = stop;
 		}
 		
 		@Override
 		public boolean hasNext() {
-			if (this.modificationCount != IntentQueue.this.modificationCount)
+			if (modificationCount != queue.getModificationCount())
 				throw new ConcurrentModificationException();
-			return currentNode.left != IntentQueue.this.head;
+			return currentNode.left != termination;
 		}
 		
 		@Override

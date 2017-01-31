@@ -1,4 +1,4 @@
-package com.projectswg;
+package com.projectswg.networking.server;
 
 import java.net.InetAddress;
 
@@ -13,12 +13,12 @@ import com.projectswg.resources.ServerConnectionStatus;
 
 public class ServerConnectionWrapper {
 	
-	private ServerConnection connection;
+	private ServerConnectionService connection;
 	private ConnectionCallback callback;
 	private IntentManager intentManager;
 	
 	public ServerConnectionWrapper(InetAddress addr, int port) {
-		connection = new ServerConnection(addr, port);
+		connection = new ServerConnectionService(addr, port);
 		intentManager = null;
 	}
 	

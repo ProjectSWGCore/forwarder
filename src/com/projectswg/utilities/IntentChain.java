@@ -5,12 +5,14 @@ import com.projectswg.control.IntentManager;
 
 public class IntentChain {
 	
+	private final IntentManager intentManager;
 	private final Object mutex;
 	private Intent i;
 	
-	public IntentChain() {
-		mutex = new Object();
-		i = null;
+	public IntentChain(IntentManager intentManager) {
+		this.intentManager = intentManager;
+		this.mutex = new Object();
+		this.i = null;
 	}
 	
 	public void reset() {
@@ -19,7 +21,7 @@ public class IntentChain {
 		}
 	}
 	
-	public void broadcastAfter(Intent i, IntentManager intentManager) {
+	public void broadcastAfter(Intent i) {
 		synchronized (mutex) {
 			i.broadcastAfterIntent(this.i, intentManager);
 			this.i = i;

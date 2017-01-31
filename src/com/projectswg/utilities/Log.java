@@ -6,10 +6,15 @@ import java.text.SimpleDateFormat;
 public class Log {
 	
 	private static final String FORMAT_STRING = "dd-MM-yy HH:mm:ss.SSS";
+	private static final String OUT_STRING_FORMAT = "%s [%s] %s%n";
+	private static final Object OUT_MUTEX = new Object();
 	
 	public static void out(String tag, String format, Object ... args) {
 		DateFormat date = new SimpleDateFormat(FORMAT_STRING);
-		System.out.printf("%s [%s] %s%n", date.format(System.currentTimeMillis()), tag, String.format(format, args));
+		synchronized (OUT_MUTEX) {
+			System.out.printf(OUT_STRING_FORMAT, date.format(System.currentTimeMillis()), tag, String.format(format, args));
+			System.out.flush();
+		}
 	}
 	
 	public static void out(Object tag, String format, Object ... args) {
@@ -26,7 +31,10 @@ public class Log {
 	
 	public static void err(String tag, String format, Object ... args) {
 		DateFormat date = new SimpleDateFormat(FORMAT_STRING);
-		System.err.printf("%s [%s] %s%n", date.format(System.currentTimeMillis()), tag, String.format(format, args));
+		synchronized (OUT_MUTEX) {
+			System.err.printf(OUT_STRING_FORMAT, date.format(System.currentTimeMillis()), tag, String.format(format, args));
+			System.err.flush();
+		}
 	}
 	
 	public static void err(Object tag, String format, Object ... args) {

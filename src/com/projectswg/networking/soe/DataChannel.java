@@ -33,31 +33,42 @@ import java.util.List;
 
 import com.projectswg.networking.Packet;
 
-
-public class DataChannelA extends Packet implements SequencedPacket {
+public class DataChannel extends Packet implements SequencedPacket {
 	
-	private List <byte []> content = new ArrayList<byte []>();
-	private short sequence = 0;
-	private short multiPacket = 0;
+	private final List<byte[]> content;
 	
-	public DataChannelA() {
-		
+	private Channel channel;
+	private short sequence;
+	private short multiPacket;
+	
+	public DataChannel() {
+		this.content = new ArrayList<>();
+		this.channel = Channel.DATA_CHANNEL_A;
+		this.sequence = 0;
+		this.multiPacket = 0;
 	}
 	
-	public DataChannelA(ByteBuffer data) {
+	public DataChannel(ByteBuffer data) {
+		this();
 		decode(data);
 	}
 	
-	public DataChannelA(byte [][] packets) {
-		for (byte [] p : packets) {
+	public DataChannel(byte[][] packets) {
+		this();
+		for (byte[] p : packets) {
 			content.add(p);
 		}
 	}
 	
 	public void decode(ByteBuffer data) {
 		super.decode(data);
-		if (getOpcode() != 9)
-			return;
+		switch (getOpcode()) {
+			case 9:  channel = Channel.DATA_CHANNEL_A; break;
+			case 10: channel = Channel.DATA_CHANNEL_B; break;
+			case 11: channel = Channel.DATA_CHANNEL_C; break;
+			case 12: channel = Channel.DATA_CHANNEL_D; break;
+			default: return;
+		}
 		data.position(2);
 		sequence = getNetShort(data);
 		multiPacket = getNetShort(data);
@@ -68,16 +79,16 @@ public class DataChannelA extends Packet implements SequencedPacket {
 				if (length == 0xFF)
 					length = getNetShort(data);
 				if (length > data.remaining()) {
-					data.position(data.position()-1);
+					data.position(data.position() - 1);
 					return;
 				}
-				byte [] pData = new byte[length];
+				byte[] pData = new byte[length];
 				data.get(pData);
 				content.add(pData);
 			}
 		} else {
-			data.position(data.position()-2);
-			byte [] pData = new byte[data.remaining()];
+			data.position(data.position() - 2);
+			byte[] pData = new byte[data.remaining()];
 			data.get(pData);
 			content.add(pData);
 		}
@@ -90,19 +101,19 @@ public class DataChannelA extends Packet implements SequencedPacket {
 	public ByteBuffer encode(int sequence) {
 		this.sequence = (short) sequence;
 		if (content.size() == 1) {
-			byte [] pData = content.get(0);
+			byte[] pData = content.get(0);
 			ByteBuffer data = ByteBuffer.allocate(4 + pData.length);
-			addNetShort(data, 9);
+			addNetShort(data, channel.getOpcode());
 			addNetShort(data, sequence);
 			data.put(pData);
 			return data;
 		} else if (content.size() > 1) {
 			int length = getLength();
-			ByteBuffer data= ByteBuffer.allocate(length);
-			addNetShort(data, 9);
+			ByteBuffer data = ByteBuffer.allocate(length);
+			addNetShort(data, channel.getOpcode());
 			addNetShort(data, sequence);
 			addNetShort(data, 0x19);
-			for (byte [] pData : content) {
+			for (byte[] pData : content) {
 				if (pData.length >= 0xFF) {
 					addByte(data, 0xFF);
 					addNetShort(data, pData.length);
@@ -117,7 +128,7 @@ public class DataChannelA extends Packet implements SequencedPacket {
 		}
 	}
 	
-	public void addPacket(byte [] packet) {
+	public void addPacket(byte[] packet) {
 		content.add(packet);
 	}
 	
@@ -130,7 +141,7 @@ public class DataChannelA extends Packet implements SequencedPacket {
 			return 4 + content.get(0).length;
 		} else {
 			int length = 6;
-			for (byte [] packet : content) {
+			for (byte[] packet : content) {
 				int addLength = packet.length;
 				length += 1 + addLength + ((addLength >= 0xFF) ? 2 : 0);
 			}
@@ -149,18 +160,55 @@ public class DataChannelA extends Packet implements SequencedPacket {
 	
 	@Override
 	public boolean equals(Object o) {
-		if (!(o instanceof DataChannelA))
+		if (!(o instanceof DataChannel))
 			return false;
-		return ((DataChannelA) o).sequence == sequence;
+		return ((DataChannel) o).sequence == sequence;
 	}
 	
 	@Override
 	public int hashCode() {
 		return sequence;
 	}
-
-	public void setSequence(short sequence) { this.sequence = sequence; }
 	
-	public short getSequence() { return sequence; }
-	public List <byte []> getPackets() { return content; }
+	public void setSequence(short sequence) {
+		this.sequence = sequence;
+	}
+	
+	public void setChannel(Channel channel) {
+		this.channel = channel;
+	}
+	
+	public short getSequence() {
+		return sequence;
+	}
+	
+	public Channel getChannel() {
+		return channel;
+	}
+	
+	public List<byte[]> getPackets() {
+		return content;
+	}
+	
+	public int getPacketCount() {
+		return content.size();
+	}
+	
+	public enum Channel {
+		DATA_CHANNEL_A(9),
+		DATA_CHANNEL_B(10),
+		DATA_CHANNEL_C(11),
+		DATA_CHANNEL_D(12);
+		
+		private final int opcode;
+		
+		Channel(int opcode) {
+			this.opcode = opcode;
+		}
+		
+		public int getOpcode() {
+			return opcode;
+		}
+	}
+	
 }
