@@ -1,8 +1,8 @@
 package com.projectswg.intents;
 
+import com.projectswg.connection.ServerConnectionChangedReason;
+import com.projectswg.connection.ServerConnectionStatus;
 import com.projectswg.control.Intent;
-import com.projectswg.networking.server.ServerConnectionChangedReason;
-import com.projectswg.resources.ServerConnectionStatus;
 
 public class ServerConnectionChangedIntent extends Intent {
 	

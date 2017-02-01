@@ -1,32 +1,30 @@
 package com.projectswg.intents;
 
-import network.PacketType;
-
 import com.projectswg.control.Intent;
 
 public class ServerToClientPacketIntent extends Intent {
 	
 	public static final String TYPE = "ServerToClientPacketIntent";
 	
-	private PacketType type;
+	private int crc;
 	private byte [] rawData;
 	
-	public ServerToClientPacketIntent(PacketType type, byte [] rawData) {
+	public ServerToClientPacketIntent(int crc, byte [] rawData) {
 		super(TYPE);
-		setPacketType(type);
+		setCrc(crc);
 		setRawData(rawData);
 	}
 	
-	public PacketType getPacketType() {
-		return type;
+	public int getCrc() {
+		return crc;
 	}
 	
 	public byte [] getRawData() {
 		return rawData;
 	}
 	
-	public void setPacketType(PacketType type) {
-		this.type = type;
+	public void setCrc(int crc) {
+		this.crc = crc;
 	}
 	
 	public void setRawData(byte [] rawData) {

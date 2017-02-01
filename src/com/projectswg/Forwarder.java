@@ -15,8 +15,9 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
+
 import com.projectswg.Connections.ConnectionCallback;
-import com.projectswg.resources.ServerConnectionStatus;
+import com.projectswg.connection.ServerConnectionStatus;
 import com.projectswg.utilities.Log;
 
 public class Forwarder extends Application implements ConnectionCallback {

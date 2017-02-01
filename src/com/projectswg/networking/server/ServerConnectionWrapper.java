@@ -2,14 +2,12 @@ package com.projectswg.networking.server;
 
 import java.net.InetAddress;
 
-import network.PacketType;
-
+import com.projectswg.connection.ServerConnectionStatus;
 import com.projectswg.control.IntentManager;
 import com.projectswg.intents.ClientConnectionChangedIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.resources.ClientConnectionStatus;
-import com.projectswg.resources.ServerConnectionStatus;
 
 public class ServerConnectionWrapper {
 	
@@ -58,12 +56,12 @@ public class ServerConnectionWrapper {
 	
 	private void onServerData(ServerToClientPacketIntent i) {
 		if (callback != null)
-			callback.onServerPacket(i.getPacketType(), i.getRawData());
+			callback.onServerPacket(i.getCrc(), i.getRawData());
 	}
 	
 	public interface ConnectionCallback {
 		void onServerConnectionChanged(ServerConnectionStatus old, ServerConnectionStatus status);
-		void onServerPacket(PacketType type, byte [] data);
+		void onServerPacket(int crc, byte [] data);
 	}
 	
 }

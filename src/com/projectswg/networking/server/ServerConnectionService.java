@@ -8,11 +8,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import network.PacketType;
 import network.packets.swg.zone.HeartBeat;
 
 import com.projectswg.concurrency.PswgBasicScheduledThread;
 import com.projectswg.concurrency.PswgBasicThread;
+import com.projectswg.connection.HolocoreSocket;
+import com.projectswg.connection.ServerConnectionChangedReason;
+import com.projectswg.connection.packets.RawPacket;
 import com.projectswg.control.Assert;
 import com.projectswg.control.IntentManager;
 import com.projectswg.control.Service;
@@ -20,7 +22,6 @@ import com.projectswg.intents.ClientConnectionChangedIntent;
 import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
-import com.projectswg.networking.server.SWGProtocol.RawPacket;
 import com.projectswg.utilities.IntentChain;
 import com.projectswg.utilities.Log;
 import com.projectswg.utilities.ThreadUtilities;
@@ -151,10 +152,10 @@ public class ServerConnectionService extends Service {
 					}
 					Assert.test(connection.isConnected());
 					RawPacket packet = null;
-					while ((packet = connection.read()) != null) {
-						if (packet.getPacketType() == PacketType.HEART_BEAT_MESSAGE)
+					while ((packet = connection.receive()) != null) {
+						if (packet.getCrc() == HeartBeat.CRC)
 							lastHeartbeat.set(System.nanoTime());
-						recvIntentChain.broadcastAfter(new ServerToClientPacketIntent(packet.getPacketType(), packet.getData()));
+						recvIntentChain.broadcastAfter(new ServerToClientPacketIntent(packet.getCrc(), packet.getData()));
 					}
 				}
 			} catch (Throwable t) {

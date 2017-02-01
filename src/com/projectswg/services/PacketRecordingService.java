@@ -4,13 +4,13 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
+import com.projectswg.connection.ServerConnectionStatus;
 import com.projectswg.control.Assert;
 import com.projectswg.control.Service;
 import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.recording.PacketRecorder;
-import com.projectswg.resources.ServerConnectionStatus;
 import com.projectswg.utilities.Log;
 
 public class PacketRecordingService extends Service {

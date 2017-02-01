@@ -6,6 +6,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import network.packets.swg.ErrorMessage;
 
+import com.projectswg.connection.ServerConnectionChangedReason;
+import com.projectswg.connection.ServerConnectionStatus;
 import com.projectswg.control.IntentManager;
 import com.projectswg.control.Manager;
 import com.projectswg.intents.ClientConnectionChangedIntent;
@@ -15,9 +17,7 @@ import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.networking.NetInterceptor.InterceptorProperties;
 import com.projectswg.networking.client.ClientConnectionService;
 import com.projectswg.networking.server.ServerConnectionService;
-import com.projectswg.networking.server.ServerConnectionChangedReason;
 import com.projectswg.networking.soe.Disconnect.DisconnectReason;
-import com.projectswg.resources.ServerConnectionStatus;
 import com.projectswg.services.PacketRecordingService;
 import com.projectswg.utilities.Log;
 import com.projectswg.utilities.ThreadUtilities;
