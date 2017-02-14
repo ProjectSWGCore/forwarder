@@ -49,6 +49,12 @@ public class ServerConnectionService extends Service {
 		return super.initialize();
 	}
 	
+	@Override
+	public boolean terminate() {
+		socket.terminate();
+		return super.terminate();
+	}
+	
 	public void setRemoteAddress(InetAddress addr, int port) {
 		socket.setRemoteAddress(addr, port);
 	}
