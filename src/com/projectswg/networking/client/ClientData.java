@@ -23,7 +23,7 @@ public class ClientData {
 		setTxSequence((short) 0);
 		setAckSequence((short) 0);
 		setOOOSequence((short) 0);
-		setClientServer(ClientServer.LOGIN);
+		setClientServer(ClientServer.NONE);
 	}
 	
 	public int getConnectionId() {

@@ -15,7 +15,6 @@ import com.projectswg.networking.Packet;
 import com.projectswg.networking.client.ClientServerSocket.IncomingPacket;
 import com.projectswg.networking.client.sender.PacketResender;
 import com.projectswg.networking.soe.*;
-import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.utilities.ByteUtilities;
 import com.projectswg.utilities.Log;
@@ -134,12 +133,18 @@ public class ClientProcessor {
 	}
 	
 	private void handlePacket(IncomingPacket incoming, Packet p) {
-		if (p instanceof SessionRequest)
+		if (p instanceof SessionRequest) {
 			onSessionRequest(incoming, (SessionRequest) p);
-		else if (p instanceof MultiPacket)
+			return;
+		}
+		if (incoming.getPort() != data.getCommunicationPort()) {
+			Log.out(this, "Dropping packet on floor - not a valid port! Expected: %d  Actual: %d", data.getCommunicationPort(), incoming.getPort());
+			return;
+		}
+		if (p instanceof MultiPacket)
 			onMultiPacket(incoming, (MultiPacket) p);
 		else if (p instanceof Disconnect)
-			onDisconnect((Disconnect) p);
+			onDisconnect(incoming, (Disconnect) p);
 		else if (p instanceof KeepAlive)
 			onKeepAlive((KeepAlive) p);
 		else if (p instanceof ClientNetworkStatusUpdate)
@@ -157,9 +162,10 @@ public class ClientProcessor {
 	}
 	
 	private void onSessionRequest(IncomingPacket incoming, SessionRequest request) {
-		int oldId = data.getConnectionId();
-		if (oldId != -1)
-			packetSender.sendRaw(new Disconnect(oldId, DisconnectReason.APPLICATION));
+		if (data.getConnectionId() == request.getConnectionId() || data.getClientServer() == incoming.getServer()) {
+			Log.out(this, "Dropping connection request! Has same ID or using same server");
+			return;
+		}
 		switch (incoming.getServer()) {
 			case LOGIN:
 				Log.out(this, "Login Session Request [port set to %d]", incoming.getPort());
@@ -187,8 +193,8 @@ public class ClientProcessor {
 		}
 	}
 	
-	private void onDisconnect(Disconnect disconnect) {
-		Log.out(this, "Received client disconnect");
+	private void onDisconnect(IncomingPacket incoming, Disconnect disconnect) {
+		Log.out(this, "Received client disconnect [port=%d reason=%s]", incoming.getPort(), disconnect.getReason());
 		setConnectionState(ClientConnectionStatus.DISCONNECTED);
 	}
 	

@@ -62,12 +62,16 @@ public class ClientServerSocket {
 	}
 	
 	public void send(byte [] packet) {
+		if (data.getClientServer() == ClientServer.NONE)
+			return;
 		Assert.test(packet.length > 0, "Packet length cannot be 0!");
 		Assert.test(data.getCommunicationPort() > 0, "Communication port has not been set!");
 		getServer().send(data.getCommunicationPort(), ADDR, packet);
 	}
 	
 	public void send(DatagramPacket packet) {
+		if (data.getClientServer() == ClientServer.NONE)
+			return;
 		Assert.test(packet.getLength() > 0, "Packet length cannot be 0!");
 		Assert.test(packet.getData().length == packet.getLength(), "Data length and packet length do not match!");
 		getServer().send(packet);
@@ -105,6 +109,7 @@ public class ClientServerSocket {
 	}
 	
 	public enum ClientServer {
+		NONE,
 		LOGIN,
 		ZONE
 	}
