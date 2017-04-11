@@ -4,14 +4,14 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
+import com.projectswg.common.control.Service;
+import com.projectswg.common.debug.Assert;
+import com.projectswg.common.debug.Log;
 import com.projectswg.connection.ServerConnectionStatus;
-import com.projectswg.control.Assert;
-import com.projectswg.control.Service;
 import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.recording.PacketRecorder;
-import com.projectswg.utilities.Log;
 
 public class PacketRecordingService extends Service {
 	
@@ -55,7 +55,7 @@ public class PacketRecordingService extends Service {
 				recorderFile = File.createTempFile("HolocoreRecording", ".hcap");
 				recorder = new PacketRecorder(recorderFile);
 			} catch (IOException e) {
-				Log.err(this, e);
+				Log.e(e);
 				recorderFile = null;
 				recorder = null;
 				recording = false;
@@ -70,7 +70,7 @@ public class PacketRecordingService extends Service {
 			try {
 				recorder.close();
 			} catch (IOException e) {
-				Log.err(this, e);
+				Log.e(e);
 			}
 		}
 	}

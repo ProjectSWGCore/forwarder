@@ -15,7 +15,7 @@ import java.util.Map.Entry;
 import java.util.TimeZone;
 import java.util.TreeMap;
 
-import com.projectswg.control.Assert;
+import com.projectswg.common.debug.Assert;
 
 public class PacketRecorder implements AutoCloseable, Closeable {
 	

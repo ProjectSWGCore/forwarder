@@ -2,12 +2,13 @@ package com.projectswg.networking.client;
 
 import java.net.DatagramPacket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.projectswg.control.Assert;
+import com.projectswg.common.debug.Assert;
+import com.projectswg.common.debug.Log;
 import com.projectswg.networking.UDPServer;
-import com.projectswg.utilities.Log;
 
 /**
  * This class is in charge of the login and zone UDP servers, and switching between the two
@@ -35,8 +36,9 @@ public class ClientServerSocket {
 		Assert.test(!connected.getAndSet(true));
 		Assert.notNull(callback);
 		try {
-			loginServer = new UDPServer(loginPort, 496);
-			zoneServer = new UDPServer(0, 496);
+			InetAddress loopback = InetAddress.getLoopbackAddress();
+			loginServer = new UDPServer(new InetSocketAddress(loopback, loginPort), 496);
+			zoneServer = new UDPServer(new InetSocketAddress(loopback, 0), 496);
 			loginServer.bind();
 			zoneServer.bind();
 			loginPort = loginServer.getPort();
@@ -46,7 +48,7 @@ public class ClientServerSocket {
 			return true;
 		} catch (SocketException e) {
 			disconnect();
-			Log.err(this, e);
+			Log.e(e);
 		}
 		return false;
 	}

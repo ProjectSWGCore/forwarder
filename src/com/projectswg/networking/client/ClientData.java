@@ -1,6 +1,7 @@
 package com.projectswg.networking.client;
 
 import com.projectswg.networking.client.ClientServerSocket.ClientServer;
+import com.projectswg.resources.ClientConnectionStatus;
 
 public class ClientData {
 	
@@ -10,20 +11,31 @@ public class ClientData {
 	private short txSequence;
 	private short ackSequence;
 	private short oooSequence;
+	private long lastAcknowledgement;
+	private boolean zoning;
 	private ClientServer server;
+	private ClientConnectionStatus status;
 	
 	public ClientData() {
-		reset();
+		reset(ClientConnectionStatus.DISCONNECTED);
 	}
 	
-	public void reset() {
+	public void reset(ClientConnectionStatus status) {
 		setConnectionId(-1);
 		setCommunicationPort(0);
 		setRxSequence((short) -1);
 		setTxSequence((short) 0);
 		setAckSequence((short) 0);
 		setOOOSequence((short) 0);
-		setClientServer(ClientServer.NONE);
+		setLastAcknowledgement(0);
+		setZoning(false);
+		setStatus(status);
+		if (status == ClientConnectionStatus.LOGIN_CONNECTED)
+			setClientServer(ClientServer.LOGIN);
+		else if (status == ClientConnectionStatus.ZONE_CONNECTED)
+			setClientServer(ClientServer.ZONE);
+		else
+			setClientServer(ClientServer.NONE);
 	}
 	
 	public int getConnectionId() {
@@ -50,8 +62,41 @@ public class ClientData {
 		return oooSequence;
 	}
 	
+	public long getLastAcknowledgement() {
+		return lastAcknowledgement;
+	}
+	
+	public boolean isZoning() {
+		return zoning;
+	}
+	
+	public double getTimeSinceLastAcknowledgement() {
+		long last = lastAcknowledgement;
+		if (last == 0)
+			return 0;
+		return (System.nanoTime() - last) / 1E6;
+	}
+	
+	public boolean isTimedOut() {
+		if (getTimeSinceLastAcknowledgement() > 5000 && !zoning)
+			return true;
+		return getTimeSinceLastAcknowledgement() > 30000 && zoning;
+	}
+	
 	public ClientServer getClientServer() {
 		return server;
+	}
+	
+	public ClientConnectionStatus getStatus() {
+		return status;
+	}
+	
+	public boolean isWaitingForClientAcknowledge() {
+		return txSequence-1 > ackSequence && connectionId != -1;
+	}
+	
+	public boolean isConnectionInitialized() {
+		return connectionId != -1 && communicationPort > 0;
 	}
 	
 	public void setConnectionId(int connectionId) {
@@ -78,8 +123,22 @@ public class ClientData {
 		this.oooSequence = oooSequence;
 	}
 	
+	public void setLastAcknowledgement(long lastAcknowledgement) {
+		this.lastAcknowledgement = lastAcknowledgement;
+	}
+	
+	public void setZoning(boolean zoning) {
+		this.zoning = zoning;
+	}
+	
 	public void setClientServer(ClientServer server) {
 		this.server = server;
+	}
+	
+	public ClientConnectionStatus setStatus(ClientConnectionStatus status) {
+		ClientConnectionStatus old = this.status;
+		this.status = status;
+		return old;
 	}
 	
 	public short getAndIncrementRxSequence() {

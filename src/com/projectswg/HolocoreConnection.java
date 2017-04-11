@@ -5,9 +5,9 @@ import java.net.UnknownHostException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.projectswg.Connections.ConnectionCallback;
+import com.projectswg.common.debug.Log;
 import com.projectswg.networking.NetInterceptor.InterceptorProperties;
 import com.projectswg.resources.HolocorePreferences;
-import com.projectswg.utilities.Log;
 import com.projectswg.utilities.ThreadUtilities;
 
 public class HolocoreConnection {
@@ -45,44 +45,44 @@ public class HolocoreConnection {
 	
 	public void start() {
 		if (running.getAndSet(true)) {
-			Log.err(this, "Not starting, already started!");
+			Log.e("Not starting, already started!");
 			return;
 		}
 		boolean success = false;
 		int attempts = 0;
 		while (!success) {
-			Log.out(this, "Initializing connections... attempt %d", attempts++);
+			Log.i("Initializing connections... attempt %d", attempts++);
 			connections = new Connections(remoteAddr, remotePort, loginPort, timeout);
 			success = connections.initialize() && connections.start();
 			if (!success) {
-				Log.err(this, "Failed to initialize");
+				Log.e("Failed to initialize");
 				connections.stop();
 				connections.terminate();
 				if (!ThreadUtilities.sleep(50)) {
-					Log.err(this, "Interrupted while connecting!");
+					Log.e("Interrupted while connecting!");
 					return;
 				}
 				loginPort++;
 			}
 		}
-		Log.out(this, "Connections initialized.");
+		Log.i("Connections initialized.");
 		setProperties();
 	}
 	
 	public void stop() {
 		if (!running.getAndSet(false)) {
-			Log.err(this, "Not stopping, already stopped!");
+			Log.e("Not stopping, already stopped!");
 			return;
 		}
 		if (connections == null) {
-			Log.err(this, "Not stopping, connections is null!");
+			Log.e("Not stopping, connections is null!");
 			return;
 		}
 		updateProperties();
 		connections.stop();
 		connections.terminate();
 		connections = null;
-		Log.out(this, "Connections terminated.");
+		Log.i("Connections terminated.");
 	}
 	
 	public void setCallback(ConnectionCallback callback) {

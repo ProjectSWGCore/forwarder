@@ -1,11 +1,9 @@
 package com.projectswg.intents;
 
-import com.projectswg.control.Intent;
+import com.projectswg.common.control.Intent;
 import com.projectswg.networking.Packet;
 
 public class ClientSonyPacketIntent extends Intent {
-	
-	public static final String TYPE = "ClientSonyPacketIntent";
 	
 	private Packet packet;
 	
@@ -14,7 +12,6 @@ public class ClientSonyPacketIntent extends Intent {
 	}
 	
 	public ClientSonyPacketIntent(Packet packet) {
-		super(TYPE);
 		setPacket(packet);
 	}
 	

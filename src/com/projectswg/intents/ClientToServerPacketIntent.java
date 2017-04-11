@@ -1,15 +1,12 @@
 package com.projectswg.intents;
 
-import com.projectswg.control.Intent;
+import com.projectswg.common.control.Intent;
 
 public class ClientToServerPacketIntent extends Intent {
-	
-	public static final String TYPE = "ClientToServerPacketIntent";
 	
 	private byte [] data;
 	
 	public ClientToServerPacketIntent(byte [] data) {
-		super(TYPE);
 		setData(data);
 	}
 	

@@ -2,8 +2,8 @@ package com.projectswg.networking.server;
 
 import java.net.InetAddress;
 
+import com.projectswg.common.control.IntentManager;
 import com.projectswg.connection.ServerConnectionStatus;
-import com.projectswg.control.IntentManager;
 import com.projectswg.intents.ClientConnectionChangedIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
@@ -45,8 +45,8 @@ public class ServerConnectionWrapper {
 	private void setupConnectionIntents() {
 		intentManager = new IntentManager();
 		connection.setIntentManager(intentManager);
-		intentManager.registerForIntent(ServerConnectionChangedIntent.TYPE, (i) -> onServerConnectionChanged((ServerConnectionChangedIntent) i));
-		intentManager.registerForIntent(ServerToClientPacketIntent.TYPE, (i) -> onServerData((ServerToClientPacketIntent) i));
+		intentManager.registerForIntent(ServerConnectionChangedIntent.class, scci -> onServerConnectionChanged(scci));
+		intentManager.registerForIntent(ServerToClientPacketIntent.class, scpi -> onServerData(scpi));
 	}
 	
 	private void onServerConnectionChanged(ServerConnectionChangedIntent i) {

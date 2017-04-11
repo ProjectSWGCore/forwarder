@@ -17,8 +17,10 @@ import javafx.scene.text.Text;
 import javafx.stage.Stage;
 
 import com.projectswg.Connections.ConnectionCallback;
+import com.projectswg.common.debug.Log;
+import com.projectswg.common.debug.Log.LogLevel;
+import com.projectswg.common.debug.log_wrapper.ConsoleLogWrapper;
 import com.projectswg.connection.ServerConnectionStatus;
-import com.projectswg.utilities.Log;
 
 public class Forwarder extends Application implements ConnectionCallback {
 	
@@ -38,6 +40,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 	private final Text clientToServerText;
 	
 	public static void main(String [] args) {
+		Log.addWrapper(new ConsoleLogWrapper(LogLevel.VERBOSE));
 		launch(args);
 	}
 	
@@ -102,9 +105,9 @@ public class Forwarder extends Application implements ConnectionCallback {
 				int port = Integer.parseInt(serverPortField.getText());
 				connections.setRemote(addr, port);
 			} catch (UnknownHostException e) {
-				Log.err(this, "Unknown IP: " + serverIpField.getText());
+				Log.e("Unknown IP: " + serverIpField.getText());
 			} catch (NumberFormatException e) {
-				Log.err(this, "Invalid Port: " + serverPortField.getText());
+				Log.e("Invalid Port: " + serverPortField.getText());
 			}
 		});
 	}
@@ -129,7 +132,7 @@ public class Forwarder extends Application implements ConnectionCallback {
 			try {
 				connections.stop();
 			} catch (Exception e) {
-				Log.err(this, e);
+				Log.e(e);
 			}
 			primaryStage.close();
 		});

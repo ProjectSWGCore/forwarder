@@ -5,25 +5,24 @@ import java.net.InetSocketAddress;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import network.packets.swg.zone.HeartBeat;
 
-import com.projectswg.concurrency.PswgBasicScheduledThread;
-import com.projectswg.concurrency.PswgBasicThread;
+import com.projectswg.common.concurrency.PswgBasicScheduledThread;
+import com.projectswg.common.concurrency.PswgBasicThread;
+import com.projectswg.common.control.IntentChain;
+import com.projectswg.common.control.IntentManager;
+import com.projectswg.common.control.Service;
+import com.projectswg.common.debug.Assert;
+import com.projectswg.common.debug.Log;
 import com.projectswg.connection.HolocoreSocket;
 import com.projectswg.connection.ServerConnectionChangedReason;
 import com.projectswg.connection.packets.RawPacket;
-import com.projectswg.control.Assert;
-import com.projectswg.control.IntentManager;
-import com.projectswg.control.Service;
 import com.projectswg.intents.ClientConnectionChangedIntent;
 import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
-import com.projectswg.utilities.IntentChain;
-import com.projectswg.utilities.Log;
 import com.projectswg.utilities.ThreadUtilities;
 
 public class ServerConnectionService extends Service {
@@ -52,6 +51,7 @@ public class ServerConnectionService extends Service {
 	@Override
 	public boolean terminate() {
 		socket.terminate();
+		stopServer();
 		return super.terminate();
 	}
 	
@@ -72,6 +72,7 @@ public class ServerConnectionService extends Service {
 	}
 	
 	private void processClientConnectionChanged(ClientConnectionChangedIntent ccci) {
+		Log.d("processClientConnectionChanged(%s)", ccci.getStatus());
 		switch (ccci.getStatus()) {
 			case LOGIN_CONNECTED:
 				startServer();
@@ -96,7 +97,6 @@ public class ServerConnectionService extends Service {
 	private static class ConnectionThread {
 		
 		private final HolocoreSocket connection;
-		private final AtomicBoolean executing;
 		private final AtomicLong lastHeartbeat;
 		private final PswgBasicThread thread;
 		private final PswgBasicScheduledThread heartbeatThread;
@@ -105,10 +105,10 @@ public class ServerConnectionService extends Service {
 		
 		public ConnectionThread(HolocoreSocket connection) {
 			this.connection = connection;
-			this.executing = new AtomicBoolean(false);
 			this.lastHeartbeat = new AtomicLong(0);
 			this.thread = new PswgBasicThread("server-connection", () -> run());
 			this.heartbeatThread = new PswgBasicScheduledThread("server-heartbeat", () -> heartbeat());
+			this.thread.setInterruptOnStop(true);
 			this.outQueue = new LinkedList<>();
 			this.recvIntentChain = null;
 		}
@@ -122,12 +122,19 @@ public class ServerConnectionService extends Service {
 		}
 		
 		public void start() {
+			if (thread.isRunning())
+				return;
 			thread.start();
+			heartbeatThread.startWithFixedDelay(0, 10*1000);
 		}
 		
 		public void stop() {
+			if (!thread.isRunning())
+				return;
 			thread.stop();
+			heartbeatThread.stop();
 			thread.awaitTermination(5000);
+			heartbeatThread.awaitTermination(1000);
 		}
 		
 		public void addToOutQueue(byte [] raw) {
@@ -138,7 +145,8 @@ public class ServerConnectionService extends Service {
 		
 		private void heartbeat() {
 			if (connection.isConnected()) {
-				if (System.nanoTime() - lastHeartbeat.get() >= HOLOCORE_TIMEOUT) {
+				long lastHeartbeat = this.lastHeartbeat.get();
+				if (lastHeartbeat != 0 && System.nanoTime() - lastHeartbeat >= HOLOCORE_TIMEOUT) {
 					stop();
 					return;
 				}
@@ -147,10 +155,8 @@ public class ServerConnectionService extends Service {
 		}
 		
 		private void run() {
-			Log.out(this, "Started ServerConnection");
+			Log.i("Started ServerConnection");
 			try {
-				executing.set(true);
-				heartbeatThread.startWithFixedDelay(0, 10*1000);
 				while (thread.isRunning()) {
 					if (connection.isDisconnected() && !tryConnect()) {
 						ThreadUtilities.sleep(1000);
@@ -165,13 +171,11 @@ public class ServerConnectionService extends Service {
 					}
 				}
 			} catch (Throwable t) {
-				Log.err(this, t);
+				Log.e(t);
 			} finally {
-				heartbeatThread.stop();
 				connection.disconnect(ServerConnectionChangedReason.NONE);
-				executing.set(false);
 			}
-			Log.out(this, "Stopped ServerConnection");
+			Log.i("Stopped ServerConnection");
 		}
 		
 		private boolean tryConnect() {

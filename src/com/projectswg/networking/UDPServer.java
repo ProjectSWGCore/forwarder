@@ -39,8 +39,8 @@ import java.util.Locale;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.projectswg.control.Assert;
-import com.projectswg.utilities.Log;
+import com.projectswg.common.debug.Assert;
+import com.projectswg.common.debug.Log;
 import com.projectswg.utilities.ThreadUtilities;
 
 /**
@@ -53,31 +53,28 @@ public class UDPServer {
 	private final byte [] dataBuffer;
 	private final Queue <DatagramPacket> inbound;
 	private final AtomicBoolean running;
-	private final int desiredPort;
+	private final InetSocketAddress bindAddr;
 	
 	private DatagramSocket socket;
 	private UDPCallback callback;
 	private Thread thread;
 	
-	public UDPServer(int port) throws SocketException {
-		this(port, 1024);
+	public UDPServer(InetSocketAddress bindAddr) throws SocketException {
+		this(bindAddr, 1024);
 	}
 	
-	public UDPServer(int port, int packetSize) {
+	public UDPServer(InetSocketAddress bindAddr, int packetSize) {
 		this.waitingForPacket = new Object();
 		this.dataBuffer = new byte[packetSize];
 		this.inbound = new ArrayDeque<>();
 		this.running = new AtomicBoolean(false);
-		this.desiredPort = port;
+		this.bindAddr = bindAddr;
 		this.callback = null;
 	}
 	
 	public void bind() throws SocketException {
 		Assert.isNull(socket);
-		if (desiredPort > 0)
-			socket = new DatagramSocket(desiredPort);
-		else
-			socket = new DatagramSocket();
+		socket = new DatagramSocket(bindAddr);
 		start();
 	}
 	
@@ -134,7 +131,7 @@ public class UDPServer {
 		try {
 			return send(port, InetAddress.getByName(addr), data);
 		} catch (UnknownHostException e) {
-			Log.err(this, e);
+			Log.e(e);
 		}
 		return false;
 	}
@@ -173,7 +170,7 @@ public class UDPServer {
 				loop();
 			}
 		} catch (Exception e) {
-			Log.err(this, e);
+			Log.e(e);
 		} finally {
 			running.set(false);
 		}
@@ -203,7 +200,7 @@ public class UDPServer {
 		} catch (IOException e) {
 			String msg = e.getMessage();
 			if (msg == null || !msg.toLowerCase(Locale.US).contains("socket closed")) {
-				Log.err(this, e);
+				Log.e(e);
 				close();
 			}
 		}
@@ -220,7 +217,7 @@ public class UDPServer {
 		} catch (IOException e) {
 			String msg = e.getMessage();
 			if (msg == null || !msg.toLowerCase(Locale.US).contains("socket closed")) {
-				Log.err(this, e);
+				Log.e(e);
 				close();
 			}
 			packet.setLength(0);

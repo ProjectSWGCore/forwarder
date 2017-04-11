@@ -1,19 +1,16 @@
 package com.projectswg.intents;
 
+import com.projectswg.common.control.Intent;
 import com.projectswg.connection.ServerConnectionChangedReason;
 import com.projectswg.connection.ServerConnectionStatus;
-import com.projectswg.control.Intent;
 
 public class ServerConnectionChangedIntent extends Intent {
-	
-	public static final String TYPE = "ServerConnectionChangedIntent";
 	
 	private ServerConnectionStatus old;
 	private ServerConnectionStatus status;
 	private ServerConnectionChangedReason reason;
 	
 	public ServerConnectionChangedIntent(ServerConnectionStatus old, ServerConnectionStatus status, ServerConnectionChangedReason reason) {
-		super(TYPE);
 		setOldStatus(old);
 		setStatus(status);
 		setReason(reason);

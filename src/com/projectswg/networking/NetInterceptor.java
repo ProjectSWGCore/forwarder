@@ -3,6 +3,8 @@ package com.projectswg.networking;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+import com.projectswg.networking.client.ClientData;
+
 import resources.Galaxy;
 import network.packets.swg.login.LoginClientId;
 import network.packets.swg.login.LoginClusterStatus;
@@ -10,19 +12,15 @@ import network.packets.swg.login.LoginClusterStatus;
 public class NetInterceptor {
 	
 	private final InterceptorProperties properties;
-	private final InterceptorData data;
+	private final ClientData clientData;
 	
-	public NetInterceptor() {
-		properties = new InterceptorProperties();
-		data = new InterceptorData();
+	public NetInterceptor(ClientData clientData) {
+		this.properties = new InterceptorProperties();
+		this.clientData = clientData;
 	}
 	
 	public InterceptorProperties getProperties() {
 		return properties;
-	}
-	
-	public InterceptorData getData() {
-		return data;
 	}
 	
 	public byte [] interceptClient(byte [] data) {
@@ -33,7 +31,7 @@ public class NetInterceptor {
 			case 0x41131F96: // LoginClientId
 				return setAutoLogin(bb);
 			case 0x43FD1C22: // CmdSceneReady
-				this.data.setZoning(false);
+				clientData.setZoning(false);
 				return data;
 			default:
 				return data;
@@ -69,24 +67,6 @@ public class NetInterceptor {
 			g.setPingPort((short) properties.getPort());
 		}
 		return cluster.encode().array();
-	}
-	
-	public static class InterceptorData {
-		
-		private boolean zoning;
-		
-		public InterceptorData() {
-			zoning = false;
-		}
-		
-		public boolean isZoning() {
-			return zoning;
-		}
-		
-		public void setZoning(boolean zoning) {
-			this.zoning = zoning;
-		}
-		
 	}
 	
 	public static class InterceptorProperties {

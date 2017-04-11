@@ -1,16 +1,13 @@
 package com.projectswg.intents;
 
-import com.projectswg.control.Intent;
+import com.projectswg.common.control.Intent;
 
 public class ServerToClientPacketIntent extends Intent {
-	
-	public static final String TYPE = "ServerToClientPacketIntent";
 	
 	private int crc;
 	private byte [] rawData;
 	
 	public ServerToClientPacketIntent(int crc, byte [] rawData) {
-		super(TYPE);
 		setCrc(crc);
 		setRawData(rawData);
 	}

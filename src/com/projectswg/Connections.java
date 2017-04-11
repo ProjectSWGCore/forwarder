@@ -6,10 +6,11 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import network.packets.swg.ErrorMessage;
 
+import com.projectswg.common.control.IntentManager;
+import com.projectswg.common.control.Manager;
+import com.projectswg.common.debug.Log;
 import com.projectswg.connection.ServerConnectionChangedReason;
 import com.projectswg.connection.ServerConnectionStatus;
-import com.projectswg.control.IntentManager;
-import com.projectswg.control.Manager;
 import com.projectswg.intents.ClientConnectionChangedIntent;
 import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
@@ -19,7 +20,6 @@ import com.projectswg.networking.client.ClientConnectionService;
 import com.projectswg.networking.server.ServerConnectionService;
 import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 import com.projectswg.services.PacketRecordingService;
-import com.projectswg.utilities.Log;
 import com.projectswg.utilities.ThreadUtilities;
 
 public class Connections extends Manager {
@@ -116,7 +116,7 @@ public class Connections extends Manager {
 		if (callback != null)
 			callback.onServerStatusChanged(scci.getOldStatus(), scci.getStatus());
 		if (scci.getStatus() == ServerConnectionStatus.DISCONNECTED && scci.getReason() != ServerConnectionChangedReason.CLIENT_DISCONNECT) {
-			Log.out(this, "Shutting down client due to server status: %s and reason %s", scci.getStatus(), scci.getReason());
+			Log.i("Shutting down client due to server status: %s and reason %s", scci.getStatus(), scci.getReason());
 			String title = "";
 			String text = "";
 			if (scci.getReason() != ServerConnectionChangedReason.INVALID_PROTOCOL) {
@@ -132,7 +132,6 @@ public class Connections extends Manager {
 			client.waitForClientAcknowledge();
 			ThreadUtilities.sleep(100);
 			client.disconnect(DisconnectReason.OTHER_SIDE_TERMINATED);
-			client.restart();
 		}
 	}
 	

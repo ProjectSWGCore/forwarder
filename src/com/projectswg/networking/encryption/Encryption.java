@@ -32,7 +32,7 @@ import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
-import com.projectswg.utilities.Log;
+import com.projectswg.common.debug.Log;
 
 public class Encryption {
 	
@@ -44,7 +44,7 @@ public class Encryption {
 		try {
 			return assembleMessage(input, crc);
 		} catch (Throwable t) {
-			Log.err("Encryption", t);
+			Log.e(t);
 			return new byte[0];
 		}
 	}
@@ -153,7 +153,7 @@ public class Encryption {
 			int length = decompressor.inflate(result);
 			return length;
 		} catch (DataFormatException e) {
-			Log.err("Encryption", "Failed to decompress packet. "+e.getClass().getSimpleName()+" Message: " + e.getMessage());
+			Log.e("Failed to decompress packet. "+e.getClass().getSimpleName()+" Message: " + e.getMessage());
 			return -1;
 		} finally {
 			decompressor.end();
