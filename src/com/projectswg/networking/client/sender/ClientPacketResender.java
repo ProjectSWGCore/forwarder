@@ -187,7 +187,6 @@ public class ClientPacketResender {
 	
 	private void sendAllInWindow() {
 		int max = congAvoidance.getWindow();
-		Log.v("Sending %d packets in window", Math.min(max, sentPackets.size()));
 		for (SequencedOutbound out : sentPackets) {
 			if (--max < 0)
 				break;
