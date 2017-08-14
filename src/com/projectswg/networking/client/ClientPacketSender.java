@@ -1,8 +1,8 @@
 package com.projectswg.networking.client;
 
-import network.packets.swg.SWGPacket;
-
 import com.projectswg.networking.Packet;
+
+import network.packets.swg.SWGPacket;
 
 public interface ClientPacketSender {
 	

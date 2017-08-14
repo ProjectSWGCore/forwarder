@@ -20,7 +20,7 @@ public class ClientData {
 		reset(ClientConnectionStatus.DISCONNECTED);
 	}
 	
-	public void reset(ClientConnectionStatus status) {
+	public void resetConnectionInfo() {
 		setConnectionId(-1);
 		setCommunicationPort(0);
 		setRxSequence((short) -1);
@@ -29,6 +29,10 @@ public class ClientData {
 		setOOOSequence((short) 0);
 		setLastAcknowledgement(0);
 		setZoning(false);
+	}
+	
+	public void reset(ClientConnectionStatus status) {
+		resetConnectionInfo();
 		setStatus(status);
 		if (status == ClientConnectionStatus.LOGIN_CONNECTED)
 			setClientServer(ClientServer.LOGIN);

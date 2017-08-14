@@ -1,13 +1,11 @@
 package com.projectswg.networking;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-
+import com.projectswg.common.network.NetBuffer;
 import com.projectswg.networking.client.ClientData;
 
-import resources.Galaxy;
 import network.packets.swg.login.LoginClientId;
 import network.packets.swg.login.LoginClusterStatus;
+import resources.Galaxy;
 
 public class NetInterceptor {
 	
@@ -26,10 +24,11 @@ public class NetInterceptor {
 	public byte [] interceptClient(byte [] data) {
 		if (data.length < 6)
 			return data;
-		ByteBuffer bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
-		switch (bb.getInt(2)) {
+		NetBuffer buffer = NetBuffer.wrap(data);
+		buffer.getShort();
+		switch (buffer.getInt()) {
 			case 0x41131F96: // LoginClientId
-				return setAutoLogin(bb);
+				return setAutoLogin(buffer);
 			case 0x43FD1C22: // CmdSceneReady
 				clientData.setZoning(false);
 				return data;
@@ -41,16 +40,17 @@ public class NetInterceptor {
 	public byte [] interceptServer(byte [] data) {
 		if (data.length < 6)
 			return data;
-		ByteBuffer bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
-		switch (bb.getInt(2)) {
+		NetBuffer buffer = NetBuffer.wrap(data);
+		buffer.getShort();
+		switch (buffer.getInt()) {
 			case 0x3436AEB6: // LoginClusterStatus
-				return getServerList(bb);
+				return getServerList(buffer);
 			default:
 				return data;
 		}
 	}
 	
-	private byte [] setAutoLogin(ByteBuffer data) {
+	private byte [] setAutoLogin(NetBuffer data) {
 		LoginClientId id = new LoginClientId(data);
 		if (!id.getUsername().equals(properties.getUsername()) || !id.getPassword().isEmpty())
 			return data.array();
@@ -58,7 +58,7 @@ public class NetInterceptor {
 		return id.encode().array();
 	}
 	
-	private byte [] getServerList(ByteBuffer data) {
+	private byte [] getServerList(NetBuffer data) {
 		LoginClusterStatus cluster = new LoginClusterStatus();
 		cluster.decode(data);
 		for (Galaxy g : cluster.getGalaxies()) {

@@ -43,7 +43,7 @@ public class ServerConnectionWrapper {
 	}
 	
 	private void setupConnectionIntents() {
-		intentManager = new IntentManager();
+		intentManager = new IntentManager(Runtime.getRuntime().availableProcessors());
 		connection.setIntentManager(intentManager);
 		intentManager.registerForIntent(ServerConnectionChangedIntent.class, scci -> onServerConnectionChanged(scci));
 		intentManager.registerForIntent(ServerToClientPacketIntent.class, scpi -> onServerData(scpi));

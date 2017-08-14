@@ -4,8 +4,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicLong;
 
-import network.packets.swg.ErrorMessage;
-
 import com.projectswg.common.control.IntentManager;
 import com.projectswg.common.control.Manager;
 import com.projectswg.common.debug.Log;
@@ -21,6 +19,8 @@ import com.projectswg.networking.server.ServerConnectionService;
 import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 import com.projectswg.services.PacketRecordingService;
 import com.projectswg.utilities.ThreadUtilities;
+
+import network.packets.swg.ErrorMessage;
 
 public class Connections extends Manager {
 	
@@ -40,7 +40,7 @@ public class Connections extends Manager {
 	}
 	
 	public Connections(InetAddress remoteAddr, int remotePort, int loginPort, boolean timeout) {
-		setIntentManager(new IntentManager());
+		setIntentManager(new IntentManager(Runtime.getRuntime().availableProcessors()));
 		this.server = new ServerConnectionService(remoteAddr, remotePort);
 		this.client = new ClientConnectionService(loginPort, timeout);
 		this.recording = new PacketRecordingService();

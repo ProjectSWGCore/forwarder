@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.projectswg.common.network.NetBuffer;
 import com.projectswg.networking.Packet;
 
 
@@ -51,6 +52,7 @@ public class MultiPacket extends Packet {
 		this.content = packets;
 	}
 	
+	@Override
 	public void decode(ByteBuffer data) {
 		data.position(2);
 		int pLength = getNextPacketLength(data);
@@ -62,20 +64,20 @@ public class MultiPacket extends Packet {
 		}
 	}
 	
+	@Override
 	public ByteBuffer encode() {
-		int length = getLength();
-		ByteBuffer data = ByteBuffer.allocate(length);
-		addNetShort(data, 3);
+		NetBuffer data = NetBuffer.allocate(getLength());
+		data.addNetShort(3);
 		for (byte [] packet : content) {
 			if (packet.length >= 255) {
-				addByte(data, 255);
-				addShort(data, packet.length);
+				data.addByte(255);
+				data.addShort(packet.length);
 			} else {
-				addByte(data, packet.length);
+				data.addByte(packet.length);
 			}
-			data.put(packet);
+			data.addRawArray(packet);
 		}
-		return data;
+		return data.getBuffer();
 	}
 	
 	public int getLength() {
@@ -103,11 +105,11 @@ public class MultiPacket extends Packet {
 	private int getNextPacketLength(ByteBuffer data) {
 		if (data.remaining() < 1)
 			return 0;
-		int length = getByte(data) & 0xFF;
+		int length = data.get() & 0xFF;
 		if (length == 255) {
 			if (data.remaining() < 2)
 				return 0;
-			return getShort(data) & 0xFFFF;
+			return data.getShort() & 0xFFFF;
 		}
 		return length;
 	}

@@ -5,6 +5,12 @@ import java.net.UnknownHostException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import com.projectswg.Connections.ConnectionCallback;
+import com.projectswg.common.debug.Log;
+import com.projectswg.common.debug.Log.LogLevel;
+import com.projectswg.common.debug.log_wrapper.ConsoleLogWrapper;
+import com.projectswg.connection.ServerConnectionStatus;
+
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -15,12 +21,6 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
-
-import com.projectswg.Connections.ConnectionCallback;
-import com.projectswg.common.debug.Log;
-import com.projectswg.common.debug.Log.LogLevel;
-import com.projectswg.common.debug.log_wrapper.ConsoleLogWrapper;
-import com.projectswg.connection.ServerConnectionStatus;
 
 public class Forwarder extends Application implements ConnectionCallback {
 	

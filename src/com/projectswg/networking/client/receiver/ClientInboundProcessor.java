@@ -4,9 +4,6 @@ import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-import network.packets.swg.login.ServerId;
-import network.packets.swg.login.ServerString;
-
 import com.projectswg.common.concurrency.PswgTaskThreadPool;
 import com.projectswg.common.control.IntentChain;
 import com.projectswg.common.control.IntentManager;
@@ -18,8 +15,21 @@ import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.Packet;
 import com.projectswg.networking.client.ClientData;
 import com.projectswg.networking.client.ClientPacketSender;
+import com.projectswg.networking.client.ClientServerSocket.ClientServer;
 import com.projectswg.networking.client.ClientServerSocket.IncomingPacket;
-import com.projectswg.networking.soe.*;
+import com.projectswg.networking.soe.Acknowledge;
+import com.projectswg.networking.soe.ClientNetworkStatusUpdate;
+import com.projectswg.networking.soe.DataChannel;
+import com.projectswg.networking.soe.Disconnect;
+import com.projectswg.networking.soe.Disconnect.DisconnectReason;
+import com.projectswg.networking.soe.Fragmented;
+import com.projectswg.networking.soe.KeepAlive;
+import com.projectswg.networking.soe.MultiPacket;
+import com.projectswg.networking.soe.OutOfOrder;
+import com.projectswg.networking.soe.SequencedPacket;
+import com.projectswg.networking.soe.ServerNetworkStatusUpdate;
+import com.projectswg.networking.soe.SessionRequest;
+import com.projectswg.networking.soe.SessionResponse;
 import com.projectswg.resources.ClientConnectionStatus;
 import com.projectswg.utilities.ByteUtilities;
 
@@ -51,7 +61,7 @@ public class ClientInboundProcessor {
 	}
 	
 	public void stop() {
-		processorThreadPool.stop();
+		processorThreadPool.stop(false);
 		processorThreadPool.awaitTermination(1000);
 	}
 	
@@ -64,7 +74,6 @@ public class ClientInboundProcessor {
 	}
 	
 	public void onConnected() {
-		packetSender.sendPackaged(new ServerString("Holocore"), new ServerId(1));
 		fragmentedProcessor.reset();
 	}
 	
@@ -129,10 +138,16 @@ public class ClientInboundProcessor {
 	}
 	
 	private void handlePacket(IncomingPacket incoming, Packet p) {
-		processorIntentChain.broadcastAfter(new ClientSonyPacketIntent(p));
-		if (p instanceof SessionRequest)
+		if (p instanceof SessionRequest) {
 			onSessionRequest(incoming, (SessionRequest) p);
-		else if (p instanceof MultiPacket)
+			processorIntentChain.broadcastAfter(new ClientSonyPacketIntent(p));
+			return;
+		}
+		if (incoming.getServer() != clientData.getClientServer()) {
+			Log.w("Dropping packet %s with invalid server %s [expected %s]", p, incoming.getServer(), clientData.getClientServer());
+			return;
+		}
+		if (p instanceof MultiPacket)
 			onMultiPacket(incoming, (MultiPacket) p);
 		else if (p instanceof Disconnect)
 			onDisconnect(incoming, (Disconnect) p);
@@ -150,6 +165,7 @@ public class ClientInboundProcessor {
 			onOutOfOrder((OutOfOrder) p);
 		else
 			Log.e("Unhandled SOE packet: %s", p);
+		processorIntentChain.broadcastAfter(new ClientSonyPacketIntent(p));
 	}
 	
 	private void onSessionRequest(IncomingPacket incoming, SessionRequest request) {
@@ -167,11 +183,14 @@ public class ClientInboundProcessor {
 				Log.i("Unknown server in session request! Server: %s", incoming.getServer());
 				return;
 		}
-		setConnectionState(newStatus);
-		clientData.reset(newStatus);
+		clientData.resetConnectionInfo();
+		clientData.setClientServer(incoming.getServer());
+		if (incoming.getServer() == ClientServer.ZONE)
+			packetSender.sendRaw(new Disconnect(clientData.getConnectionId(), DisconnectReason.NEW_CONNECTION_ATTEMPT));
 		clientData.setConnectionId(request.getConnectionId());
 		clientData.setCommunicationPort(incoming.getPort());
 		packetSender.sendRaw(new SessionResponse(request.getConnectionId(), 0, (byte) 0, (byte) 0, (byte) 0, MAX_PACKET_SIZE));
+		setConnectionState(newStatus);
 	}
 	
 	private void onMultiPacket(IncomingPacket incoming, MultiPacket packet) {

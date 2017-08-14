@@ -7,8 +7,6 @@ import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import network.packets.swg.zone.HeartBeat;
-
 import com.projectswg.common.concurrency.PswgBasicScheduledThread;
 import com.projectswg.common.concurrency.PswgBasicThread;
 import com.projectswg.common.control.IntentChain;
@@ -24,6 +22,8 @@ import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.utilities.ThreadUtilities;
+
+import network.packets.swg.zone.HeartBeat;
 
 public class ServerConnectionService extends Service {
 	
@@ -108,7 +108,6 @@ public class ServerConnectionService extends Service {
 			this.lastHeartbeat = new AtomicLong(0);
 			this.thread = new PswgBasicThread("server-connection", () -> run());
 			this.heartbeatThread = new PswgBasicScheduledThread("server-heartbeat", () -> heartbeat());
-			this.thread.setInterruptOnStop(true);
 			this.outQueue = new LinkedList<>();
 			this.recvIntentChain = null;
 		}
@@ -131,7 +130,7 @@ public class ServerConnectionService extends Service {
 		public void stop() {
 			if (!thread.isRunning())
 				return;
-			thread.stop();
+			thread.stop(true);
 			heartbeatThread.stop();
 			thread.awaitTermination(5000);
 			heartbeatThread.awaitTermination(1000);
@@ -179,7 +178,7 @@ public class ServerConnectionService extends Service {
 		}
 		
 		private boolean tryConnect() {
-			if (!connection.connect())
+			if (!connection.connect(10000))
 				return false;
 			synchronized (outQueue) {
 				while (!outQueue.isEmpty()) {

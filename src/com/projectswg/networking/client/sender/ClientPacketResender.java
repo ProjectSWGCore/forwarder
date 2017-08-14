@@ -32,7 +32,6 @@ public class ClientPacketResender {
 		this.sender = sender;
 		this.sentPackets = new ArrayList<>(128);
 		this.resender = new PswgBasicThread("packet-resender", () -> resendRunnable());
-		this.resender.setInterruptOnStop(true);
 		this.congAvoidance = new CongestionAvoidance();
 		this.lastSent = new AtomicLong(0);
 	}
@@ -44,7 +43,7 @@ public class ClientPacketResender {
 	}
 	
 	public void stop() {
-		resender.stop();
+		resender.stop(true);
 		resender.awaitTermination(1000);
 		synchronized (sentPackets) {
 			sentPackets.clear();
@@ -73,9 +72,7 @@ public class ClientPacketResender {
 	}
 	
 	private void handleClientStatusChanged(ClientConnectionStatus status) {
-		if (status == ClientConnectionStatus.DISCONNECTED) {
-			restart();
-		}
+		restart();
 	}
 	
 	private void onOutOfOrder(short sequence) {
@@ -300,10 +297,12 @@ public class ClientPacketResender {
 			this.data = data;
 		}
 		
+		@Override
 		public short getSequence() { return (short) sequence; }
 		public int getSequenceInt() { return sequence; }
 		public byte [] getData() { return data; }
 		
+		@Override
 		public int compareTo(SequencedPacket p) {
 			if (getSequence() < p.getSequence())
 				return -1;
@@ -312,12 +311,14 @@ public class ClientPacketResender {
 			return 1;
 		}
 		
+		@Override
 		public boolean equals(Object o) {
 			if (!(o instanceof SequencedOutbound))
 				return super.equals(o);
 			return ((SequencedOutbound) o).getSequence() == sequence;
 		}
 		
+		@Override
 		public int hashCode() {
 			return sequence;
 		}

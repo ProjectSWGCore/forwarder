@@ -35,7 +35,6 @@ public class ClientPackager {
 		this.inboundQueue = new SynchronizedQueue<>(new ArrayDeque<>(128));
 		this.inboundQueueLock = new SmartLock();
 		this.packagerThread = new PswgBasicThread("packet-packager", () -> packagerRunnable());
-		this.packagerThread.setInterruptOnStop(true);
 		this.packetResender = new ClientPacketResender(sender);
 		this.channel = new DataChannel();
 		reset();
@@ -50,7 +49,7 @@ public class ClientPackager {
 	
 	public void stop() {
 		packetResender.stop();
-		packagerThread.stop();
+		packagerThread.stop(true);
 		packagerThread.awaitTermination(1000);
 		inboundQueue.clear();
 	}
@@ -66,9 +65,7 @@ public class ClientPackager {
 	}
 	
 	private void handleClientStatusChanged(ClientConnectionStatus status) {
-		if (status == ClientConnectionStatus.DISCONNECTED) {
-			clear();
-		}
+		clear();
 	}
 	
 	private void packagerRunnable() {

@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.projectswg.common.network.NetBuffer;
 import com.projectswg.networking.Packet;
 
 public class DataChannel extends Packet implements SequencedPacket {
@@ -60,6 +61,7 @@ public class DataChannel extends Packet implements SequencedPacket {
 		}
 	}
 	
+	@Override
 	public void decode(ByteBuffer data) {
 		super.decode(data);
 		switch (getOpcode()) {
@@ -75,7 +77,7 @@ public class DataChannel extends Packet implements SequencedPacket {
 		if (multiPacket == 0x19) {
 			int length = 0;
 			while (data.remaining() > 1) {
-				length = getByte(data) & 0xFF;
+				length = data.get() & 0xFF;
 				if (length == 0xFF)
 					length = getNetShort(data);
 				if (length > data.remaining()) {
@@ -94,38 +96,38 @@ public class DataChannel extends Packet implements SequencedPacket {
 		}
 	}
 	
+	@Override
 	public ByteBuffer encode() {
 		return encode(this.sequence);
 	}
 	
 	public ByteBuffer encode(int sequence) {
 		this.sequence = (short) sequence;
+		NetBuffer data;
 		if (content.size() == 1) {
 			byte[] pData = content.get(0);
-			ByteBuffer data = ByteBuffer.allocate(4 + pData.length);
-			addNetShort(data, channel.getOpcode());
-			addNetShort(data, sequence);
-			data.put(pData);
-			return data;
+			data = NetBuffer.allocate(4 + pData.length);
+			data.addNetShort(channel.getOpcode());
+			data.addNetShort(sequence);
+			data.addRawArray(pData);
 		} else if (content.size() > 1) {
-			int length = getLength();
-			ByteBuffer data = ByteBuffer.allocate(length);
-			addNetShort(data, channel.getOpcode());
-			addNetShort(data, sequence);
-			addNetShort(data, 0x19);
+			data = NetBuffer.allocate(getLength());
+			data.addNetShort(channel.getOpcode());
+			data.addNetShort(sequence);
+			data.addNetShort(0x19);
 			for (byte[] pData : content) {
 				if (pData.length >= 0xFF) {
-					addByte(data, 0xFF);
-					addNetShort(data, pData.length);
+					data.addByte(0xFF);
+					data.addNetShort(pData.length);
 				} else {
-					data.put((byte) pData.length);
+					data.addByte(pData.length);
 				}
-				data.put(pData);
+				data.addRawArray(pData);
 			}
-			return data;
 		} else {
-			return ByteBuffer.allocate(0);
+			data = NetBuffer.allocate(0);
 		}
+		return data.getBuffer();
 	}
 	
 	public void addPacket(byte[] packet) {
@@ -178,6 +180,7 @@ public class DataChannel extends Packet implements SequencedPacket {
 		this.channel = channel;
 	}
 	
+	@Override
 	public short getSequence() {
 		return sequence;
 	}
