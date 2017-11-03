@@ -39,9 +39,9 @@ import java.util.Locale;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.projectswg.common.concurrency.Delay;
 import com.projectswg.common.debug.Assert;
 import com.projectswg.common.debug.Log;
-import com.projectswg.utilities.ThreadUtilities;
 
 /**
  * This class represents a UDP server that listens for packets and
@@ -97,7 +97,7 @@ public class UDPServer {
 		int port = socket.getLocalPort();
 		while (port == 0) {
 			port = socket.getLocalPort();
-			if (!ThreadUtilities.sleep(5))
+			if (Delay.sleepMilli(5))
 				break;
 		}
 		return port;

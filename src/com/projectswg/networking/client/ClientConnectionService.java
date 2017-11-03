@@ -16,7 +16,7 @@ import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 import com.projectswg.resources.ClientConnectionStatus;
 
 import network.packets.swg.SWGPacket;
-import network.packets.swg.zone.HeartBeat;
+import com.projectswg.common.network.packets.swg.zone.HeartBeat;
 
 public class ClientConnectionService extends Manager implements ClientPacketSender {
 	

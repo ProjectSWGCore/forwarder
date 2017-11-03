@@ -5,10 +5,10 @@ import java.net.UnknownHostException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.projectswg.Connections.ConnectionCallback;
+import com.projectswg.common.concurrency.Delay;
 import com.projectswg.common.debug.Log;
 import com.projectswg.networking.NetInterceptor.InterceptorProperties;
 import com.projectswg.resources.HolocorePreferences;
-import com.projectswg.utilities.ThreadUtilities;
 
 public class HolocoreConnection {
 	
@@ -58,7 +58,7 @@ public class HolocoreConnection {
 				Log.e("Failed to initialize");
 				connections.stop();
 				connections.terminate();
-				if (!ThreadUtilities.sleep(50)) {
+				if (Delay.sleepMilli(50)) {
 					Log.e("Interrupted while connecting!");
 					return;
 				}

@@ -4,6 +4,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicLong;
 
+import com.projectswg.common.concurrency.Delay;
 import com.projectswg.common.control.IntentManager;
 import com.projectswg.common.control.Manager;
 import com.projectswg.common.debug.Log;
@@ -18,7 +19,6 @@ import com.projectswg.networking.client.ClientConnectionService;
 import com.projectswg.networking.server.ServerConnectionService;
 import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 import com.projectswg.services.PacketRecordingService;
-import com.projectswg.utilities.ThreadUtilities;
 
 import network.packets.swg.ErrorMessage;
 
@@ -130,7 +130,7 @@ public class Connections extends Manager {
 			}
 			client.sendPackaged(new ErrorMessage(title, text, false));
 			client.waitForClientAcknowledge();
-			ThreadUtilities.sleep(100);
+			Delay.sleepMilli(100);
 			client.disconnect(DisconnectReason.OTHER_SIDE_TERMINATED);
 		}
 	}

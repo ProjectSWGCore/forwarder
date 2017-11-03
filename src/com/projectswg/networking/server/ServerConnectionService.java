@@ -7,6 +7,7 @@ import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import com.projectswg.common.concurrency.Delay;
 import com.projectswg.common.concurrency.PswgBasicScheduledThread;
 import com.projectswg.common.concurrency.PswgBasicThread;
 import com.projectswg.common.control.IntentChain;
@@ -21,9 +22,8 @@ import com.projectswg.intents.ClientConnectionChangedIntent;
 import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
-import com.projectswg.utilities.ThreadUtilities;
 
-import network.packets.swg.zone.HeartBeat;
+import com.projectswg.common.network.packets.swg.zone.HeartBeat;
 
 public class ServerConnectionService extends Service {
 	
@@ -158,7 +158,7 @@ public class ServerConnectionService extends Service {
 			try {
 				while (thread.isRunning()) {
 					if (connection.isDisconnected() && !tryConnect()) {
-						ThreadUtilities.sleep(1000);
+						Delay.sleepMilli(1000);
 						continue;
 					}
 					Assert.test(connection.isConnected());
