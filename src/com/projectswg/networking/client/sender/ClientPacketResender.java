@@ -1,8 +1,11 @@
 package com.projectswg.networking.client.sender;
 
-import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.projectswg.common.concurrency.Delay;
 import com.projectswg.common.concurrency.PswgBasicThread;
@@ -14,7 +17,6 @@ import com.projectswg.networking.Packet;
 import com.projectswg.networking.client.ClientPacketSender;
 import com.projectswg.networking.soe.Acknowledge;
 import com.projectswg.networking.soe.OutOfOrder;
-import com.projectswg.networking.soe.SequencedPacket;
 import com.projectswg.resources.ClientConnectionStatus;
 
 /**
@@ -22,195 +24,229 @@ import com.projectswg.resources.ClientConnectionStatus;
  */
 public class ClientPacketResender {
 	
-	private final List<SequencedOutbound> sentPackets;
-	private final ClientPacketSender sender;
-	private final PswgBasicThread resender;
-	private final CongestionAvoidance congAvoidance;
-	private final AtomicLong lastSent;
+	private final ResenderWrapper resender;
+	private final PswgBasicThread executor;
+	private final AtomicBoolean running;
 	
 	public ClientPacketResender(ClientPacketSender sender) {
-		this.sender = sender;
-		this.sentPackets = new ArrayList<>(128);
-		this.resender = new PswgBasicThread("packet-resender", () -> resendRunnable());
-		this.congAvoidance = new CongestionAvoidance();
-		this.lastSent = new AtomicLong(0);
+		this.resender = new ResenderWrapper(sender);
+		this.executor = new PswgBasicThread("packet-resender", this::resender);
+		this.running = new AtomicBoolean(false);
 	}
 	
 	public void start(IntentManager intentManager) {
-		resender.start();
 		intentManager.registerForIntent(ClientSonyPacketIntent.class, cspi -> handleClientPacket(cspi.getPacket()));
 		intentManager.registerForIntent(ClientConnectionChangedIntent.class, ccci -> handleClientStatusChanged(ccci.getStatus()));
+		
+		running.set(true);
+		executor.start();
 	}
 	
 	public void stop() {
-		resender.stop(true);
-		resender.awaitTermination(1000);
-		synchronized (sentPackets) {
-			sentPackets.clear();
-		}
+		running.set(false);
+		executor.stop(true);
+		executor.awaitTermination(500);
+		resender.reset();
 	}
 	
-	public void restart() {
-		synchronized (sentPackets) {
-			sentPackets.clear();
-		}
+	public void add(SequencedOutbound out) {
+		resender.add(out);
 	}
 	
-	public void add(short sequence, byte [] data) {
-		SequencedOutbound out = new SequencedOutbound(sequence, data);
-		synchronized (sentPackets) {
-			sentPackets.add(out);
-			sentPackets.notifyAll();
+	private void resender() {
+		while (running.get()) {
+			resender.resend();
 		}
 	}
 	
 	private void handleClientPacket(Packet p) {
 		if (p instanceof Acknowledge)
-			onAcknowledge(((Acknowledge) p).getSequence());
+			resender.onAcknowledge(((Acknowledge) p).getSequence());
 		else if (p instanceof OutOfOrder)
-			onOutOfOrder(((OutOfOrder) p).getSequence());
+			resender.onOutOfOrder(((OutOfOrder) p).getSequence());
 	}
 	
 	private void handleClientStatusChanged(ClientConnectionStatus status) {
-		restart();
+		resender.reset();
 	}
 	
-	private void onOutOfOrder(short sequence) {
-		Log.w("OOO %d", sequence);
-		synchronized (sentPackets) {
-			congAvoidance.onOutOfOrder();
-			updateRtt();
+	private static class ResenderWrapper {
+		
+		private final List<SequencedOutbound> sentPackets;
+		private final CongestionAvoidance congAvoidance;
+		private final Lock sentPacketsLock;
+		private final Condition sentPacketsCondition;
+		private final Resender resender;
+		
+		public ResenderWrapper(ClientPacketSender sender) {
+			this.sentPackets = new LinkedList<>();
+			this.congAvoidance = new CongestionAvoidance();
+			this.sentPacketsLock = new ReentrantLock(false);
+			this.sentPacketsCondition = sentPacketsLock.newCondition();
+			this.resender = new Resender(congAvoidance, sender);
 		}
-	}
-	
-	private void onAcknowledge(short sequence) {
-		int seqInt = sequence & 0xFFFF;
-		SequencedOutbound out;
-		synchronized (sentPackets) {
-			while (!sentPackets.isEmpty()) {
-				out = sentPackets.get(0);
-				if (out.getSequenceInt() <= seqInt || (seqInt < 100 && out.getSequenceInt() > Short.MAX_VALUE-100)) {
-					sentPackets.remove(0);
-				} else {
-					break;
-				}
+		
+		public void add(SequencedOutbound seq) {
+			sentPacketsLock.lock();
+			try {
+				sentPackets.add(seq);
+				sentPacketsCondition.signal();
+			} finally {
+				sentPacketsLock.unlock();
 			}
-			updateRtt();
-			congAvoidance.onAcknowledgement();
 		}
-	}
-	
-	private void resendRunnable() {
-		while (resender.isRunning()) {
-			synchronized (sentPackets) {
-				congAvoidance.markBeginningOfWindow();
-				if (congAvoidance.getWindow() != 50 && congAvoidance.getAverageRTT() != Double.MAX_VALUE) {
-					Log.d("Congestion Window: %d  Average RTT: %.3fms", congAvoidance.getWindow(), congAvoidance.getAverageRTT()/1E6);
+		
+		public void reset() {
+			sentPacketsLock.lock();
+			try {
+				sentPackets.clear();
+			} finally {
+				sentPacketsLock.unlock();
+			}
+		}
+		
+		public void onOutOfOrder(short sequence) {
+			Log.w("OOO %d", sequence);
+			sentPacketsLock.lock();
+			try {
+				congAvoidance.onOutOfOrder();
+			} finally {
+				sentPacketsLock.unlock();
+			}
+		}
+		
+		public void onAcknowledge(short sequence) {
+			sentPacketsLock.lock();
+			try {
+				int seqInt = sequence & 0xFFFF;
+				SequencedOutbound out;
+				while (!sentPackets.isEmpty()) {
+					out = sentPackets.get(0);
+					if (out.getSequenceInt() <= seqInt || (seqInt < 100 && out.getSequenceInt() > Short.MAX_VALUE-100)) {
+						sentPackets.remove(0);
+					} else {
+						break;
+					}
 				}
-				boolean lossEvent = !sentPackets.isEmpty() && (congAvoidance.isTimedOut() || congAvoidance.isTripleACK());
-				if (lossEvent) {
-					Log.w("Resender: Loss Event!");
-				}
-				sendAllInWindow();
-				if (sentPackets.size() < 100) {
-					casualWindowIteration(lossEvent);
-				} else {
-					intenseWindowIteration(lossEvent);
-				}
-				congAvoidance.markEndOfWindow();
-				if (waitForPacket())
-					continue;
+				congAvoidance.onAcknowledgement();
+			} finally {
+				sentPacketsLock.unlock();
+			}
+		}
+		
+		public void resend() {
+			sentPacketsLock.lock();
+			try {
+				waitForPacket();
+				resender.handle(sentPackets);
+			} finally {
+				sentPacketsLock.unlock();
 			}
 			waitForTimeoutOrAck();
 		}
-	}
-	
-	private void updateRtt() {
-		long lastRtt = getTimeSinceSent();
-		clearTimeSinceSent();
-		if (lastRtt > 0)
-			congAvoidance.updateRtt(lastRtt);
-	}
-	
-	private void waitForTimeoutOrAck() {
-		double avg = congAvoidance.getAverageRTT();
-		if (avg == Double.MAX_VALUE)
-			Delay.sleepMicro(5);
-		else
-			Delay.sleepNano((long) Math.min(1E9, Math.max(5E6, avg)));
-	}
-	
-	private boolean waitForPacket() {
-		if (!sentPackets.isEmpty())
-			return false;
-		try {
-			while (sentPackets.isEmpty()) {
-				sentPackets.wait();
+		
+		private void waitForPacket() {
+			if (!sentPackets.isEmpty())
+				return;
+			try {
+				while (sentPackets.isEmpty()) {
+					sentPacketsCondition.await();
+				}
+			} catch (InterruptedException e) {
+				
 			}
-		} catch (InterruptedException e) {
+			congAvoidance.clearTimeSinceSent();
 		}
-		clearTimeSinceSent();
-		return true;
-	}
-	
-	/**
-	 * This congestion avoidance algorithm focuses more on slow window
-	 * increases/decreases.  This is ideal for casual gameplay where there
-	 * aren't many packets being sent at once.
-	 */
-	private void casualWindowIteration(boolean lossEvent) {
-		if (lossEvent) {
-			congAvoidance.setWindow(Math.max(10, congAvoidance.getWindow() - 5));
-		} else {
-			congAvoidance.setWindow(Math.min(50, congAvoidance.getWindow() + 5));
+		
+		private void waitForTimeoutOrAck() {
+			double avg = congAvoidance.getAverageRTT();
+			if (avg == Double.MAX_VALUE)
+				Delay.sleepMicro(5);
+			else
+				Delay.sleepNano((long) Math.min(1E9, Math.max(5E6, avg)));
 		}
+		
 	}
 	
-	/**
-	 * This congestion avoidance algorithm focuses on fast window
-	 * increases/decreases.  This is ideal for zone-in where as many packets as
-	 * possible need to be sent as fast as possible.
-	 */
-	private void intenseWindowIteration(boolean lossEvent) {
-		int window = congAvoidance.getWindow();
-		if (window > sentPackets.size())
-			return;
-		if (lossEvent) {
-			congAvoidance.setWindow(Math.max(50, window / 4));
-		} else {
-			congAvoidance.setWindow((int) (window * 1.5));
+	private static class Resender {
+		
+		private final CongestionAvoidance congAvoidance;
+		private final ClientPacketSender sender;
+		
+		public Resender(CongestionAvoidance congAvoidance, ClientPacketSender sender) {
+			this.congAvoidance = congAvoidance;
+			this.sender = sender;
 		}
-	}
-	
-	private void sendAllInWindow() {
-		int max = congAvoidance.getWindow();
-		for (SequencedOutbound out : sentPackets) {
-			if (--max < 0)
-				break;
-			sender.sendRaw(out.getData());
-			congAvoidance.onSentPacket();
+		
+		public void handle(List<SequencedOutbound> sentPackets) {
+			congAvoidance.markBeginningOfWindow();
+			int sentPacketCount = sentPackets.size();
+			boolean lossEvent = sentPacketCount > 0 && (congAvoidance.isTimedOut() || congAvoidance.isTripleACK());
+			
+			printStatus(lossEvent);
+			sendAllInWindow(sentPackets);
+			if (sentPacketCount < 100) {
+				casualWindowIteration(lossEvent);
+			} else {
+				intenseWindowIteration(lossEvent, sentPacketCount);
+			}
+			congAvoidance.markEndOfWindow();
 		}
-		updateTimeSinceSent();
-	}
-	
-	private void updateTimeSinceSent() {
-		lastSent.compareAndSet(0, System.nanoTime());
-	}
-	
-	private long getTimeSinceSent() {
-		long sent = lastSent.get();
-		if (sent == 0)
-			return -1;
-		return System.nanoTime() - sent;
-	}
-	
-	private void clearTimeSinceSent() {
-		lastSent.set(0);
+		
+		private void printStatus(boolean lossEvent) {
+			if (congAvoidance.getWindow() != 50 && congAvoidance.getAverageRTT() != Double.MAX_VALUE)
+				Log.d("Resender: Congestion Window: %d  Average RTT: %.3fms", congAvoidance.getWindow(), congAvoidance.getAverageRTT()/1E6);
+			
+			if (lossEvent)
+				Log.w("Resender: Loss Event!");
+		}
+		
+		/**
+		 * This congestion avoidance algorithm focuses more on slow window
+		 * increases/decreases.  This is ideal for casual gameplay where there
+		 * aren't many packets being sent at once.
+		 */
+		private void casualWindowIteration(boolean lossEvent) {
+			if (lossEvent) {
+				congAvoidance.setWindow(Math.max(10, congAvoidance.getWindow() - 5));
+			} else {
+				congAvoidance.setWindow(Math.min(50, congAvoidance.getWindow() + 5));
+			}
+		}
+		
+		/**
+		 * This congestion avoidance algorithm focuses on fast window
+		 * increases/decreases.  This is ideal for zone-in where as many packets as
+		 * possible need to be sent as fast as possible.
+		 */
+		private void intenseWindowIteration(boolean lossEvent, int sentPackets) {
+			int window = congAvoidance.getWindow();
+			if (window > sentPackets)
+				return;
+			if (lossEvent) {
+				congAvoidance.setWindow(Math.max(50, window / 4));
+			} else {
+				congAvoidance.setWindow((int) (window * 1.5));
+			}
+		}
+		
+		private void sendAllInWindow(List<SequencedOutbound> sentPackets) {
+			int max = congAvoidance.getWindow();
+			for (SequencedOutbound out : sentPackets) {
+				if (--max < 0)
+					break;
+				sender.sendRaw(out.getData());
+				congAvoidance.onSentPacket();
+			}
+			congAvoidance.updateTimeSinceSent();
+		}
+		
 	}
 	
 	private static class CongestionAvoidance {
 		
 		// Higher-level properties
+		private long lastSent;
 		private double averageRtt;
 		private int congestionWindow;
 		
@@ -226,25 +262,22 @@ public class ClientPacketResender {
 		}
 		
 		public void reset() {
+			this.lastSent = 0;
+			this.congestionWindow = 1;
+			
 			this.outOfOrders = 0;
 			this.acknowledgements = 0;
 			this.sentPackets = 0;
 			this.missedWindows = 0;
-			this.congestionWindow = 1;
 		}
 		
 		public void onOutOfOrder() {
+			updateRtt();
 			this.outOfOrders++;
 		}
 		
-		public void updateRtt(long lastRtt) {
-			if (this.averageRtt == Double.MAX_VALUE)
-				this.averageRtt = lastRtt;
-			else
-				this.averageRtt = averageRtt * 0.875 + lastRtt * 0.125;
-		}
-		
 		public void onAcknowledgement() {
+			updateRtt();
 			this.outOfOrders = 0;
 			this.acknowledgements++;
 		}
@@ -285,43 +318,27 @@ public class ClientPacketResender {
 			return missedWindows >= 2 && averageRtt != Double.MAX_VALUE;
 		}
 		
-	}
-	
-	private static class SequencedOutbound implements SequencedPacket {
-		
-		private int sequence;
-		private byte [] data;
-		
-		public SequencedOutbound(short sequence, byte [] data) {
-			this.sequence = sequence & 0xFFFF;
-			this.data = data;
+		public void updateTimeSinceSent() {
+			if (lastSent == 0)
+				lastSent = System.nanoTime();
 		}
 		
-		@Override
-		public short getSequence() { return (short) sequence; }
-		public int getSequenceInt() { return sequence; }
-		public byte [] getData() { return data; }
-		
-		@Override
-		public int compareTo(SequencedPacket p) {
-			if (getSequence() < p.getSequence())
-				return -1;
-			if (getSequence() == p.getSequence())
-				return 0;
-			return 1;
+		private void updateRtt() {
+			long lastRtt = lastSent;
+			lastSent = 0;
+			if (lastRtt <= 0)
+				return;
+			lastRtt = System.nanoTime() - lastRtt;
+			
+			if (this.averageRtt == Double.MAX_VALUE)
+				this.averageRtt = lastRtt;
+			else
+				this.averageRtt = averageRtt * 0.875 + lastRtt * 0.125;
 		}
 		
-		@Override
-		public boolean equals(Object o) {
-			if (!(o instanceof SequencedOutbound))
-				return super.equals(o);
-			return ((SequencedOutbound) o).getSequence() == sequence;
+		public void clearTimeSinceSent() {
+			lastSent = 0;
 		}
 		
-		@Override
-		public int hashCode() {
-			return sequence;
-		}
-	}
-	
+	}	
 }

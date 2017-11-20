@@ -15,6 +15,7 @@ import com.projectswg.common.control.IntentManager;
 import com.projectswg.common.control.Service;
 import com.projectswg.common.debug.Assert;
 import com.projectswg.common.debug.Log;
+import com.projectswg.common.network.packets.swg.zone.HeartBeat;
 import com.projectswg.connection.HolocoreSocket;
 import com.projectswg.connection.ServerConnectionChangedReason;
 import com.projectswg.connection.packets.RawPacket;
@@ -22,8 +23,6 @@ import com.projectswg.intents.ClientConnectionChangedIntent;
 import com.projectswg.intents.ClientToServerPacketIntent;
 import com.projectswg.intents.ServerConnectionChangedIntent;
 import com.projectswg.intents.ServerToClientPacketIntent;
-
-import com.projectswg.common.network.packets.swg.zone.HeartBeat;
 
 public class ServerConnectionService extends Service {
 	

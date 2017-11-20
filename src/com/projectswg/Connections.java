@@ -8,6 +8,7 @@ import com.projectswg.common.concurrency.Delay;
 import com.projectswg.common.control.IntentManager;
 import com.projectswg.common.control.Manager;
 import com.projectswg.common.debug.Log;
+import com.projectswg.common.network.packets.swg.ErrorMessage;
 import com.projectswg.connection.ServerConnectionChangedReason;
 import com.projectswg.connection.ServerConnectionStatus;
 import com.projectswg.intents.ClientConnectionChangedIntent;
@@ -19,8 +20,6 @@ import com.projectswg.networking.client.ClientConnectionService;
 import com.projectswg.networking.server.ServerConnectionService;
 import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 import com.projectswg.services.PacketRecordingService;
-
-import network.packets.swg.ErrorMessage;
 
 public class Connections extends Manager {
 	

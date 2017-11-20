@@ -4,6 +4,8 @@ import com.projectswg.common.concurrency.Delay;
 import com.projectswg.common.concurrency.PswgBasicScheduledThread;
 import com.projectswg.common.control.Manager;
 import com.projectswg.common.debug.Log;
+import com.projectswg.common.network.packets.SWGPacket;
+import com.projectswg.common.network.packets.swg.zone.HeartBeat;
 import com.projectswg.intents.ServerToClientPacketIntent;
 import com.projectswg.networking.NetInterceptor;
 import com.projectswg.networking.NetInterceptor.InterceptorProperties;
@@ -14,9 +16,6 @@ import com.projectswg.networking.client.sender.ClientOutboundService;
 import com.projectswg.networking.soe.Disconnect;
 import com.projectswg.networking.soe.Disconnect.DisconnectReason;
 import com.projectswg.resources.ClientConnectionStatus;
-
-import network.packets.swg.SWGPacket;
-import com.projectswg.common.network.packets.swg.zone.HeartBeat;
 
 public class ClientConnectionService extends Manager implements ClientPacketSender {
 	
