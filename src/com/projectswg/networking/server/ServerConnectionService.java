@@ -105,8 +105,8 @@ public class ServerConnectionService extends Service {
 		public ConnectionThread(HolocoreSocket connection) {
 			this.connection = connection;
 			this.lastHeartbeat = new AtomicLong(0);
-			this.thread = new PswgBasicThread("server-connection", () -> run());
-			this.heartbeatThread = new PswgBasicScheduledThread("server-heartbeat", () -> heartbeat());
+			this.thread = new PswgBasicThread("server-connection", this::run);
+			this.heartbeatThread = new PswgBasicScheduledThread("server-heartbeat", this::heartbeat);
 			this.outQueue = new LinkedList<>();
 			this.recvIntentChain = null;
 		}
