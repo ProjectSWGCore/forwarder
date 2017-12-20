@@ -4,6 +4,6 @@
 [submodule "PSWGCommon"]
 	path = PSWGCommon
 	url = git@bitbucket.org:projectswg/pswgcommon.git
-[submodule "Client Holocore"]
-	path = Client Holocore
+[submodule "ClientHolocore"]
+	path = ClientHolocore
 	url = ssh://git@bitbucket.org/projectswg/client-holocore.git

@@ -23,7 +23,7 @@ shadowJar {
 
 dependencies {
 	compile project(':PSWGCommon')
-	compile project(':Client Holocore')
+	compile project(':ClientHolocore')
 	compileOnly fileTree(dir: 'lib', include: ['*.jar'])
 }
 
