@@ -3,6 +3,8 @@ apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'java'
 
 mainClassName  = 'com.projectswg.Forwarder'
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
 
 manifest {
 	attributes 'Main-Class': 'com.projectswg.Forwarder'
