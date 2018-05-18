@@ -6,8 +6,6 @@ import com.projectswg.common.network.packets.PacketType;
 import com.projectswg.common.network.packets.swg.login.LoginClientId;
 import com.projectswg.common.network.packets.swg.login.LoginClusterStatus;
 import com.projectswg.forwarder.Forwarder.ForwarderData;
-import me.joshlarson.jlcommon.log.Log;
-import me.joshlarson.jlcommon.utilities.ByteUtilities;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

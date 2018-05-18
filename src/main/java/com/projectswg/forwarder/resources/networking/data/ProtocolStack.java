@@ -4,8 +4,8 @@ import com.projectswg.forwarder.resources.networking.ClientServer;
 import com.projectswg.forwarder.resources.networking.packets.Fragmented;
 import com.projectswg.forwarder.resources.networking.packets.Packet;
 import com.projectswg.forwarder.resources.networking.packets.SequencedPacket;
+import org.jetbrains.annotations.NotNull;
 
-import javax.annotation.Nonnull;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.function.BiConsumer;
@@ -103,7 +103,7 @@ public class ProtocolStack {
 		}
 	}
 	
-	public boolean addIncoming(@Nonnull SequencedPacket packet) {
+	public boolean addIncoming(@NotNull SequencedPacket packet) {
 		synchronized (sequenced) {
 			if (packet.getSequence() < rxSequence)
 				return true;
@@ -133,7 +133,7 @@ public class ProtocolStack {
 		return fragmentedProcessor.addFragmented(frag);
 	}
 	
-	public void addOutbound(@Nonnull byte [] data) {
+	public void addOutbound(@NotNull byte [] data) {
 		outboundRaw.offer(data);
 	}
 	

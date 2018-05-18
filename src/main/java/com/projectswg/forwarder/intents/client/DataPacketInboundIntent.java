@@ -1,18 +1,17 @@
 package com.projectswg.forwarder.intents.client;
 
 import me.joshlarson.jlcommon.control.Intent;
-
-import javax.annotation.Nonnull;
+import org.jetbrains.annotations.NotNull;
 
 public class DataPacketInboundIntent extends Intent {
 	
 	private final byte [] data;
 	
-	public DataPacketInboundIntent(@Nonnull byte [] data) {
+	public DataPacketInboundIntent(@NotNull byte [] data) {
 		this.data = data;
 	}
 	
-	@Nonnull
+	@NotNull
 	public byte [] getData() {
 		return data;
 	}

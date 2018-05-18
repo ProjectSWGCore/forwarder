@@ -1,14 +1,13 @@
 package com.projectswg.forwarder.services.client;
 
 import com.projectswg.forwarder.Forwarder.ForwarderData;
-import com.projectswg.forwarder.intents.client.SonyPacketInboundIntent;
 import com.projectswg.forwarder.intents.client.ClientConnectedIntent;
 import com.projectswg.forwarder.intents.client.ClientDisconnectedIntent;
+import com.projectswg.forwarder.intents.client.SonyPacketInboundIntent;
 import com.projectswg.forwarder.intents.client.UpdateStackIntent;
 import com.projectswg.forwarder.intents.control.StartForwarderIntent;
 import com.projectswg.forwarder.intents.control.StopForwarderIntent;
 import com.projectswg.forwarder.resources.networking.ClientServer;
-import com.projectswg.forwarder.resources.networking.UDPServer;
 import com.projectswg.forwarder.resources.networking.data.ProtocolStack;
 import com.projectswg.forwarder.resources.networking.packets.*;
 import com.projectswg.forwarder.resources.networking.packets.Disconnect.DisconnectReason;
@@ -16,6 +15,7 @@ import me.joshlarson.jlcommon.control.IntentChain;
 import me.joshlarson.jlcommon.control.IntentHandler;
 import me.joshlarson.jlcommon.control.Service;
 import me.joshlarson.jlcommon.log.Log;
+import me.joshlarson.jlcommon.network.UDPServer;
 import me.joshlarson.jlcommon.utilities.ByteUtilities;
 
 import java.net.*;

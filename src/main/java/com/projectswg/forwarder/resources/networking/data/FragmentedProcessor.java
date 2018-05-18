@@ -1,11 +1,11 @@
 package com.projectswg.forwarder.resources.networking.data;
 
+import com.projectswg.forwarder.resources.networking.packets.Fragmented;
+import com.projectswg.forwarder.resources.networking.packets.Packet;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-
-import com.projectswg.forwarder.resources.networking.packets.Fragmented;
-import com.projectswg.forwarder.resources.networking.packets.Packet;
 
 public class FragmentedProcessor {
 	

@@ -27,11 +27,11 @@
 ***********************************************************************************/
 package com.projectswg.forwarder.resources.networking.packets;
 
+import com.projectswg.common.network.NetBuffer;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-
-import com.projectswg.common.network.NetBuffer;
 
 public class DataChannel extends Packet implements SequencedPacket {
 	

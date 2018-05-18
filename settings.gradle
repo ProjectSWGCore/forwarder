@@ -1,1 +1,2 @@
-include ':PSWGCommon', ':ClientHolocore'
+include ':pswgcommon'
+include ':client-holocore'

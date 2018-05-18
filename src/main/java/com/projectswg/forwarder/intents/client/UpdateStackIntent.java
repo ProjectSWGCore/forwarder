@@ -2,8 +2,7 @@ package com.projectswg.forwarder.intents.client;
 
 import com.projectswg.forwarder.resources.networking.data.ProtocolStack;
 import me.joshlarson.jlcommon.control.Intent;
-
-import javax.annotation.CheckForNull;
+import org.jetbrains.annotations.Nullable;
 
 public class UpdateStackIntent extends Intent {
 	
@@ -13,7 +12,7 @@ public class UpdateStackIntent extends Intent {
 		this.stack = stack;
 	}
 	
-	@CheckForNull
+	@Nullable
 	public ProtocolStack getStack() {
 		return stack;
 	}

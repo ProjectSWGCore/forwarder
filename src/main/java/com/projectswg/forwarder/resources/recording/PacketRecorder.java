@@ -3,7 +3,6 @@ package com.projectswg.forwarder.resources.recording;
 import java.io.*;
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
-import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TimeZone;
