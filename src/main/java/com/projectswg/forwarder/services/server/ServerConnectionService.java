@@ -2,7 +2,7 @@ package com.projectswg.forwarder.services.server;
 
 import com.projectswg.connection.HolocoreSocket;
 import com.projectswg.connection.ServerConnectionChangedReason;
-import com.projectswg.connection.packets.RawPacket;
+import com.projectswg.connection.RawPacket;
 import com.projectswg.forwarder.Forwarder.ForwarderData;
 import com.projectswg.forwarder.intents.client.ClientConnectedIntent;
 import com.projectswg.forwarder.intents.client.ClientDisconnectedIntent;
