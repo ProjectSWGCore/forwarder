@@ -1,6 +1,5 @@
 package com.projectswg.forwarder.services.server;
 
-import com.projectswg.common.network.packets.PacketType;
 import com.projectswg.common.utilities.ByteUtilities;
 import com.projectswg.connection.HolocoreSocket;
 import com.projectswg.connection.RawPacket;
