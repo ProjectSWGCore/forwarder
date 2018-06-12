@@ -10,7 +10,6 @@ import com.projectswg.forwarder.intents.control.StopForwarderIntent;
 import com.projectswg.forwarder.resources.networking.ClientServer;
 import com.projectswg.forwarder.resources.networking.data.ProtocolStack;
 import com.projectswg.forwarder.resources.networking.packets.*;
-import com.projectswg.forwarder.resources.networking.packets.Disconnect.DisconnectReason;
 import me.joshlarson.jlcommon.control.IntentChain;
 import me.joshlarson.jlcommon.control.IntentHandler;
 import me.joshlarson.jlcommon.control.Service;
