@@ -140,6 +140,8 @@ public class ClientServerService extends Service {
 	private void broadcast(InetSocketAddress source, ClientServer server, Packet parsed) {
 		ProtocolStack stack = this.stack.get();
 		if (parsed instanceof SessionRequest) {
+			if (stack != null && stack.getServer() == ClientServer.ZONE)
+				return;
 			stack = new ProtocolStack(source, server, (remote, data) -> send(remote, server, data));
 			stack.setConnectionId(((SessionRequest) parsed).getConnectionId());
 			setStack(stack);
@@ -154,20 +156,18 @@ public class ClientServerService extends Service {
 		Log.t("[%s]@%s sent: %s", source, server, parsed);
 		intentChain.broadcastAfter(getIntentManager(), new SonyPacketInboundIntent(parsed));
 		if (parsed instanceof Disconnect) {
+			Log.d("Received client disconnect with id %d and reason %s", ((Disconnect) parsed).getConnectionId(), ((Disconnect) parsed).getReason());
 			setStack(null);
 		}
 	}
 	
 	private void setStack(ProtocolStack stack) {
+		Log.d("Updating stack: %s", stack);
 		ProtocolStack oldStack = this.stack.getAndSet(stack);
-		if (oldStack != null) {
-			oldStack.send(new Disconnect(oldStack.getConnectionId(), DisconnectReason.MANAGER_DELETED));
-			if (stack == null)
-				intentChain.broadcastAfter(getIntentManager(), new ClientDisconnectedIntent());
-		}
-		if (stack != null && stack.getServer() == ClientServer.LOGIN) {
+		if (oldStack != null && stack == null)
+			intentChain.broadcastAfter(getIntentManager(), new ClientDisconnectedIntent());
+		if (stack != null && stack.getServer() == ClientServer.LOGIN)
 			intentChain.broadcastAfter(getIntentManager(), new ClientConnectedIntent());
-		}
 		intentChain.broadcastAfter(getIntentManager(), new UpdateStackIntent(stack));
 	}
 	

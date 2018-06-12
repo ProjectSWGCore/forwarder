@@ -58,4 +58,10 @@ public class OutOfOrder extends Packet {
 	}
 	
 	public short getSequence() { return sequence; }
+	
+	@Override
+	public String toString() {
+		return String.format("OutOfOrder[%d]", sequence);
+	}
+	
 }

@@ -99,4 +99,10 @@ public class Disconnect extends Packet {
 			return reason;
 		}
 	}
+	
+	@Override
+	public String toString() {
+		return String.format("Disconnect[id=%d, reason=%s]", connectionId, reason);
+	}
+	
 }

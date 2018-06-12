@@ -133,4 +133,9 @@ public class Fragmented extends Packet implements SequencedPacket {
 		return f;
 	}
 	
+	@Override
+	public String toString() {
+		return String.format("Fragmented[seq=%d, len=%d]", sequence, length);
+	}
+	
 }

@@ -22,4 +22,9 @@ public class KeepAlive extends Packet {
 		return data;
 	}
 	
+	@Override
+	public String toString() {
+		return String.format("KeepAlive[]");
+	}
+	
 }

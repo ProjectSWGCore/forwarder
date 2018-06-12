@@ -213,4 +213,9 @@ public class DataChannel extends Packet implements SequencedPacket {
 		}
 	}
 	
+	@Override
+	public String toString() {
+		return String.format("DataChannel[seq=%d, packets=%d]", sequence, content.size());
+	}
+	
 }

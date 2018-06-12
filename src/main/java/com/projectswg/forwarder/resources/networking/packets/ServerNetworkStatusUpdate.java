@@ -91,4 +91,10 @@ public class ServerNetworkStatusUpdate extends Packet {
 	public void setClientPacketsRecv(long recv)   { this.clientPacketsRecv = recv; }
 	public void setServerPacketsSent(long sent)   { this.serverPacketsSent = sent; }
 	public void setServerPacketsRecv(long recv)   { this.serverPacketsRecv = recv; }
+	
+	@Override
+	public String toString() {
+		return String.format("ServerNetworkStatusUpdate[ticks=%d, syncStamp=%d, clientSent=%d, clientRecv=%d, serverSent=%d, serverRecv=%d]", clientTickCount, serverSyncStampLong, clientPacketsSent, clientPacketsRecv, serverPacketsSent, serverPacketsRecv);
+	}
+	
 }

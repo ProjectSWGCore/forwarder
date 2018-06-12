@@ -71,4 +71,10 @@ public class SessionRequest extends Packet {
 	public int getCrcLength()    { return crcLength; }
 	public int getConnectionId() { return connectionId; }
 	public int getUdpSize()      { return udpSize; }
+	
+	@Override
+	public String toString() {
+		return String.format("SessionRequest[connectionId=%d, crcLength=%d, udpSize=%d]", connectionId, crcLength, udpSize);
+	}
+	
 }

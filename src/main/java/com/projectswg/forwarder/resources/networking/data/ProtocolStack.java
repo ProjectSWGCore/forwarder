@@ -4,6 +4,7 @@ import com.projectswg.forwarder.resources.networking.ClientServer;
 import com.projectswg.forwarder.resources.networking.packets.Fragmented;
 import com.projectswg.forwarder.resources.networking.packets.Packet;
 import com.projectswg.forwarder.resources.networking.packets.SequencedPacket;
+import me.joshlarson.jlcommon.log.Log;
 import org.jetbrains.annotations.NotNull;
 
 import java.net.InetSocketAddress;
@@ -46,6 +47,7 @@ public class ProtocolStack {
 	}
 	
 	public void send(Packet packet) {
+		Log.t("Sending %s", packet);
 		send(packet.encode().array());
 	}
 	
@@ -164,6 +166,11 @@ public class ProtocolStack {
 	
 	public Collection<SequencedOutbound> getOutboundPackagedBuffer() {
 		return Collections.unmodifiableCollection(outboundPackaged);
+	}
+	
+	@Override
+	public String toString() {
+		return String.format("ProtocolStack[server=%s, source=%s, connectionId=%d]", server, source, connectionId);
 	}
 	
 }

@@ -102,4 +102,10 @@ public class ClientNetworkStatusUpdate extends Packet {
 	public void setLastServerUpdate(int last) { this.lastServerUpdate = last; }
 	public void setPacketsSent(long sent) { this.packetSent = sent; }
 	public void setPacketsRecv(long recv) { this.packetRecv = recv; }
+	
+	@Override
+	public String toString() {
+		return String.format("ClientNetworkStatusUpdate[tick=%d, lastUpdate=%d, avgUpdate=%d, shortestUpdate=%d, longestUpdate=%d, lastServerUpdate=%d, sent=%d, recv=%d]", clientTickCount, lastUpdate, avgUpdate, shortUpdate, longUpdate, lastServerUpdate, packetSent, packetRecv);
+	}
+	
 }

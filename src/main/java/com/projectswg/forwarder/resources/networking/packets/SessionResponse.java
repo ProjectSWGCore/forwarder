@@ -92,4 +92,10 @@ public class SessionResponse extends Packet {
 	public void setEncryptionFlag(short flag)	{ this.encryptionFlag = (byte) flag; }
 	public void setXorLength(byte xorLength)	{ this.xorLength = xorLength; }
 	public void setUdpSize(int size)			{ this.udpSize = size; }
+	
+	@Override
+	public String toString() {
+		return String.format("SessionResponse[connectionId=%d, crcSeed=%d, crcLength=%d, encryptionFlag=%d, xorLength=%d, udpSize=%d]", connectionId, crcSeed, crcLength, encryptionFlag, xorLength, udpSize);
+	}
+	
 }

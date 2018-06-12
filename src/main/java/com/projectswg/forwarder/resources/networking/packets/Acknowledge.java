@@ -62,4 +62,9 @@ public class Acknowledge extends Packet {
 	
 	public short getSequence() { return sequence; }
 	
+	@Override
+	public String toString() {
+		return String.format("Acknowledge[%d]", sequence);
+	}
+	
 }

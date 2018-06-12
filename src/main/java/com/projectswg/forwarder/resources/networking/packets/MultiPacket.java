@@ -112,4 +112,9 @@ public class MultiPacket extends Packet {
 		return length;
 	}
 	
+	@Override
+	public String toString() {
+		return String.format("MultiPacket[packets=%d]", content.size());
+	}
+	
 }
