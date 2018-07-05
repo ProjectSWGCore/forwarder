@@ -128,6 +128,8 @@ public class Forwarder {
 		private String password				= null;
 		private int loginPort				= 0;
 		private int zonePort				= 0;
+		private int outboundTunerMaxSend	= 100;
+		private int outboundTunerInterval	= 20;
 		
 		private ForwarderData() { }
 		
@@ -151,6 +153,14 @@ public class Forwarder {
 			return zonePort;
 		}
 		
+		public int getOutboundTunerMaxSend() {
+			return outboundTunerMaxSend;
+		}
+		
+		public int getOutboundTunerInterval() {
+			return outboundTunerInterval;
+		}
+		
 		public void setAddress(InetSocketAddress address) {
 			this.address = address;
 		}
@@ -170,6 +180,15 @@ public class Forwarder {
 		public void setZonePort(int zonePort) {
 			this.zonePort = zonePort;
 		}
+		
+		public void setOutboundTunerMaxSend(int outboundTunerMaxSend) {
+			this.outboundTunerMaxSend = outboundTunerMaxSend;
+		}
+		
+		public void setOutboundTunerInterval(int outboundTunerInterval) {
+			this.outboundTunerInterval = outboundTunerInterval;
+		}
+		
 	}
 	
 }

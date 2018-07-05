@@ -4,7 +4,6 @@ import com.projectswg.common.network.packets.PacketType;
 import com.projectswg.common.network.packets.swg.zone.HeartBeat;
 import com.projectswg.forwarder.intents.client.DataPacketInboundIntent;
 import com.projectswg.forwarder.intents.client.SonyPacketInboundIntent;
-import com.projectswg.forwarder.intents.client.UpdateStackIntent;
 import com.projectswg.forwarder.resources.networking.data.ProtocolStack;
 import com.projectswg.forwarder.resources.networking.packets.*;
 import me.joshlarson.jlcommon.control.IntentChain;
@@ -16,30 +15,20 @@ import me.joshlarson.jlcommon.log.Log;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class ClientInboundDataService extends Service {
 	
 	private final IntentMultiplexer multiplexer;
-	private final AtomicReference<ProtocolStack> stack;
 	private final IntentChain intentChain;
 	
 	public ClientInboundDataService() {
 		this.multiplexer = new IntentMultiplexer(this, ProtocolStack.class, Packet.class);
-		this.stack = new AtomicReference<>(null);
 		this.intentChain = new IntentChain();
 	}
 	
 	@IntentHandler
 	private void handleSonyPacketInboundIntent(SonyPacketInboundIntent spii) {
-		ProtocolStack stack = this.stack.get();
-		assert stack != null : "stack is null";
-		multiplexer.call(stack, spii.getPacket());
-	}
-	
-	@IntentHandler
-	private void handleUpdateStackIntent(UpdateStackIntent sci) {
-		stack.set(sci.getStack());
+		multiplexer.call(spii.getStack(), spii.getPacket());
 	}
 	
 	@Multiplexer

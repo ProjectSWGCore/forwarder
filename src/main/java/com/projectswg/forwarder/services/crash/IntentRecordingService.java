@@ -3,13 +3,11 @@ package com.projectswg.forwarder.services.crash;
 import com.projectswg.forwarder.Forwarder.ForwarderData;
 import com.projectswg.forwarder.intents.client.ClientConnectedIntent;
 import com.projectswg.forwarder.intents.client.ClientDisconnectedIntent;
-import com.projectswg.forwarder.intents.client.UpdateStackIntent;
 import com.projectswg.forwarder.intents.control.ClientCrashedIntent;
 import com.projectswg.forwarder.intents.control.StartForwarderIntent;
 import com.projectswg.forwarder.intents.control.StopForwarderIntent;
 import com.projectswg.forwarder.intents.server.ServerConnectedIntent;
 import com.projectswg.forwarder.intents.server.ServerDisconnectedIntent;
-import com.projectswg.forwarder.resources.networking.data.ProtocolStack;
 import me.joshlarson.jlcommon.control.Intent;
 import me.joshlarson.jlcommon.control.IntentHandler;
 import me.joshlarson.jlcommon.control.Service;
@@ -78,15 +76,6 @@ public class IntentRecordingService extends Service {
 	@IntentHandler
 	private void handleClientDisconnectedIntent(ClientDisconnectedIntent cdi) {
 		log(cdi, "");
-	}
-	
-	@IntentHandler
-	private void handleUpdateStackIntent(UpdateStackIntent usi) {
-		ProtocolStack stack = usi.getStack();
-		if (stack == null)
-			log(usi, "Stack='null'");
-		else
-			log(usi, "Server='%s' Source='%s' ConnectionId='%d'", stack.getServer(), stack.getSource(), stack.getConnectionId());
 	}
 	
 	@IntentHandler

@@ -1,15 +1,14 @@
 package com.projectswg.forwarder.services.client;
 
 import com.projectswg.forwarder.Forwarder.ForwarderData;
-import com.projectswg.forwarder.intents.client.ClientConnectedIntent;
-import com.projectswg.forwarder.intents.client.ClientDisconnectedIntent;
-import com.projectswg.forwarder.intents.client.SonyPacketInboundIntent;
-import com.projectswg.forwarder.intents.client.UpdateStackIntent;
+import com.projectswg.forwarder.intents.client.*;
 import com.projectswg.forwarder.intents.control.StartForwarderIntent;
 import com.projectswg.forwarder.intents.control.StopForwarderIntent;
+import com.projectswg.forwarder.intents.server.ServerDisconnectedIntent;
 import com.projectswg.forwarder.resources.networking.ClientServer;
 import com.projectswg.forwarder.resources.networking.data.ProtocolStack;
 import com.projectswg.forwarder.resources.networking.packets.*;
+import com.projectswg.forwarder.resources.networking.packets.Disconnect.DisconnectReason;
 import me.joshlarson.jlcommon.control.IntentChain;
 import me.joshlarson.jlcommon.control.IntentHandler;
 import me.joshlarson.jlcommon.control.Service;
@@ -19,12 +18,13 @@ import me.joshlarson.jlcommon.utilities.ByteUtilities;
 
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.EnumMap;
+import java.util.Map;
 
 public class ClientServerService extends Service {
 	
 	private final IntentChain intentChain;
-	private final AtomicReference<ProtocolStack> stack;
+	private final Map<ClientServer, ProtocolStack> stacks;
 	
 	private ForwarderData data;
 	private UDPServer loginServer;
@@ -32,7 +32,7 @@ public class ClientServerService extends Service {
 	
 	public ClientServerService() {
 		this.intentChain = new IntentChain();
-		this.stack = new AtomicReference<>(null);
+		this.stacks = new EnumMap<>(ClientServer.class);
 		this.data = null;
 		this.loginServer = null;
 		this.zoneServer = null;
@@ -45,7 +45,8 @@ public class ClientServerService extends Service {
 	
 	@Override
 	public boolean stop() {
-		setStack(null);
+		closeConnection(ClientServer.LOGIN);
+		closeConnection(ClientServer.ZONE);
 		return true;
 	}
 	
@@ -90,6 +91,12 @@ public class ClientServerService extends Service {
 		loginServer = null;
 		zoneServer = null;
 		Log.i("Closed the login and zone udp servers");
+	}
+	
+	@IntentHandler
+	private void handleServerDisconnectedIntent(ServerDisconnectedIntent sdi) {
+		closeConnection(ClientServer.LOGIN);
+		closeConnection(ClientServer.ZONE);
 	}
 	
 	private void customizeUdpServer(DatagramSocket socket) {
@@ -137,37 +144,73 @@ public class ClientServerService extends Service {
 	}
 	
 	private void broadcast(InetSocketAddress source, ClientServer server, Packet parsed) {
-		ProtocolStack stack = this.stack.get();
-		if (parsed instanceof SessionRequest) {
-			if (stack != null && stack.getServer() == ClientServer.ZONE)
-				return;
-			stack = new ProtocolStack(source, server, (remote, data) -> send(remote, server, data));
-			stack.setConnectionId(((SessionRequest) parsed).getConnectionId());
-			setStack(stack);
-			stack.send(new SessionResponse(((SessionRequest) parsed).getConnectionId(), 0, (byte) 0, (byte) 0, (byte) 0, 496));
-		}
-		if (stack != null && parsed instanceof PingPacket) {
-			stack.setPingSource(source);
-		} else if (stack == null || !stack.getSource().equals(source) || stack.getServer() != server) {
+		ProtocolStack stack = process(source, server, parsed);
+		if (stack == null) {
 			Log.t("[%s]@%s DROPPED %s", source, server, parsed);
 			return;
 		}
 		Log.t("[%s]@%s sent: %s", source, server, parsed);
-		intentChain.broadcastAfter(getIntentManager(), new SonyPacketInboundIntent(parsed));
-		if (parsed instanceof Disconnect) {
-			Log.d("Received client disconnect with id %d and reason %s", ((Disconnect) parsed).getConnectionId(), ((Disconnect) parsed).getReason());
-			setStack(null);
-		}
+		intentChain.broadcastAfter(getIntentManager(), new SonyPacketInboundIntent(stack, parsed));
 	}
 	
-	private void setStack(ProtocolStack stack) {
-		Log.d("Updating stack: %s", stack);
-		ProtocolStack oldStack = this.stack.getAndSet(stack);
-		if (oldStack != null && stack == null)
-			intentChain.broadcastAfter(getIntentManager(), new ClientDisconnectedIntent());
-		if (stack != null && stack.getServer() == ClientServer.LOGIN)
+	private ProtocolStack process(InetSocketAddress source, ClientServer server, Packet parsed) {
+		if (parsed instanceof SessionRequest)
+			return onSessionRequest(source, server, (SessionRequest) parsed);
+		if (parsed instanceof Disconnect)
+			return onDisconnect(source, server, (Disconnect) parsed);
+		
+		ProtocolStack stack = stacks.get(server);
+		if (stack == null)
+			return null;
+		
+		if (parsed instanceof PingPacket) {
+			stack.setPingSource(source);
+		} else if (!stack.getSource().equals(source) || stack.getServer() != server) {
+			return null;
+		}
+		
+		return stack;
+	}
+	
+	private ProtocolStack onSessionRequest(InetSocketAddress source, ClientServer server, SessionRequest request) {
+		ProtocolStack stack = new ProtocolStack(source, server, (remote, data) -> send(remote, server, data));
+		stack.setConnectionId(request.getConnectionId());
+		
+		openConnection(server, stack);
+		return stack;
+	}
+	
+	private ProtocolStack onDisconnect(InetSocketAddress source, ClientServer server, Disconnect disconnect) {
+		// Sets the current stack to null if it matches the Disconnect packet
+		ProtocolStack stack = stacks.get(server);
+		if (stack != null && stack.getSource().equals(source) && stack.getConnectionId() == disconnect.getConnectionId()) {
+			closeConnection(server);
+		} else {
+			send(source, server, new Disconnect(disconnect.getConnectionId(), DisconnectReason.APPLICATION).encode().array());
+		}
+		return stack;
+	}
+	
+	private void openConnection(ClientServer server, ProtocolStack stack) {
+		closeConnection(server);
+		if (server == ClientServer.LOGIN) {
+			closeConnection(ClientServer.ZONE);
 			intentChain.broadcastAfter(getIntentManager(), new ClientConnectedIntent());
-		intentChain.broadcastAfter(getIntentManager(), new UpdateStackIntent(stack));
+		}
+		stacks.put(server, stack);
+		
+		stack.send(new SessionResponse(stack.getConnectionId(), 0, (byte) 0, (byte) 0, (byte) 0, 496));
+		intentChain.broadcastAfter(getIntentManager(), new StackCreatedIntent(stack));
+	}
+	
+	private void closeConnection(ClientServer server) {
+		ProtocolStack stack = stacks.remove(server);
+		if (stack == null)
+			return;
+		stack.send(new Disconnect(stack.getConnectionId(), DisconnectReason.APPLICATION));
+		intentChain.broadcastAfter(getIntentManager(), new StackDestroyedIntent(stack));
+		if (stacks.isEmpty())
+			intentChain.broadcastAfter(getIntentManager(), new ClientDisconnectedIntent());
 	}
 	
 	private static Packet parse(byte [] rawData) {
