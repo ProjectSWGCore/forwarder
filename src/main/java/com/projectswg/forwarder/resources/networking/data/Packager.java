@@ -1,26 +1,26 @@
 package com.projectswg.forwarder.resources.networking.data;
 
+import com.projectswg.forwarder.resources.networking.data.ProtocolStack.ConnectionStream;
 import com.projectswg.forwarder.resources.networking.packets.DataChannel;
 import com.projectswg.forwarder.resources.networking.packets.Fragmented;
 
-import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Packager {
 	
 	private final AtomicInteger size;
-	private final DataChannel channel;
+	private final List<byte[]> dataChannel;
 	private final Queue<byte[]> outboundRaw;
-	private final Queue<SequencedOutbound> outboundPackaged;
-	private final ProtocolStack stack;
+	private final ConnectionStream<SequencedOutbound> outboundPackaged;
 	
-	public Packager(Queue<byte[]> outboundRaw, Queue<SequencedOutbound> outboundPackaged, ProtocolStack stack) {
+	public Packager(Queue<byte[]> outboundRaw, ConnectionStream<SequencedOutbound> outboundPackaged, ProtocolStack stack) {
 		this.size = new AtomicInteger(8);
-		this.channel = new DataChannel();
+		this.dataChannel = new ArrayList<>();
 		this.outboundRaw = outboundRaw;
 		this.outboundPackaged = outboundPackaged;
-		this.stack = stack;
 	}
 	
 	public void handle(int maxPackaged) {
@@ -46,29 +46,27 @@ public class Packager {
 	}
 	
 	private void addToDataChannel(byte [] packet, int packetSize) {
-		channel.addPacket(packet);
+		dataChannel.add(packet);
 		size.getAndAdd(packetSize);
 	}
 	
 	private void sendDataChannel() {
-		if (channel.getPacketCount() == 0)
+		if (dataChannel.isEmpty())
 			return;
 		
-		channel.setSequence(stack.getAndIncrementTxSequence());
-		outboundPackaged.add(new SequencedOutbound(channel.getSequence(), channel.encode().array()));
+		outboundPackaged.addOrdered(new SequencedOutbound(new DataChannel(dataChannel)));
 		reset();
 	}
 	
 	private void sendFragmented(byte [] packet) {
-		Fragmented[] frags = Fragmented.encode(ByteBuffer.wrap(packet), stack.getTxSequence());
-		stack.getAndIncrementTxSequence(frags.length);
-		for (Fragmented frag : frags) {
-			outboundPackaged.add(new SequencedOutbound(frag.getSequence(), frag.encode().array()));
+		byte[][] frags = Fragmented.split(packet);
+		for (byte [] frag : frags) {
+			outboundPackaged.addOrdered(new SequencedOutbound(new Fragmented((short) 0, frag)));
 		}
 	}
 	
 	private void reset() {
-		channel.clearPackets();
+		dataChannel.clear();
 		size.set(8);
 	}
 	

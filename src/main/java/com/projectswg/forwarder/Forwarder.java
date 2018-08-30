@@ -7,6 +7,7 @@ import com.projectswg.forwarder.intents.control.StartForwarderIntent;
 import com.projectswg.forwarder.intents.control.StopForwarderIntent;
 import me.joshlarson.jlcommon.concurrency.Delay;
 import me.joshlarson.jlcommon.control.IntentManager;
+import me.joshlarson.jlcommon.control.IntentManager.IntentSpeedStatistics;
 import me.joshlarson.jlcommon.control.Manager;
 import me.joshlarson.jlcommon.control.SafeMain;
 import me.joshlarson.jlcommon.log.Log;
@@ -19,6 +20,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
@@ -97,9 +99,8 @@ public class Forwarder {
 	}
 	
 	public void run() {
-		intentManager.initialize();
-		intentManager.registerForIntent(ClientConnectedIntent.class, cci -> connected.set(true));
-		intentManager.registerForIntent(ClientDisconnectedIntent.class, cdi -> connected.set(false));
+		intentManager.registerForIntent(ClientConnectedIntent.class, "Forwarder#handleClientConnectedIntent", cci -> connected.set(true));
+		intentManager.registerForIntent(ClientDisconnectedIntent.class, "Forwarder#handleClientDisconnectedIntent", cdi -> connected.set(false));
 		
 		ConnectionManager primary = new ConnectionManager();
 		{
@@ -108,13 +109,27 @@ public class Forwarder {
 			Manager.start(managers);
 			new StartForwarderIntent(data).broadcast(intentManager);
 			Manager.run(managers, 100);
+			List<IntentSpeedStatistics> intentTimes = intentManager.getSpeedRecorder();
+			intentTimes.sort(Comparator.comparingLong(IntentSpeedStatistics::getTotalTime).reversed());
+			Log.i("    Intent Times: [%d]", intentTimes.size());
+			Log.i("        %-30s%-60s%-40s%-10s%-20s", "Intent", "Receiver Class", "Receiver Method", "Count", "Time");
+			for (IntentSpeedStatistics record : intentTimes) {
+				String receiverName = record.getKey().toString();
+				if (receiverName.indexOf('$') != -1)
+					receiverName = receiverName.substring(0, receiverName.indexOf('$'));
+				receiverName = receiverName.replace("com.projectswg.forwarder.services.", "");
+				String intentName = record.getIntent().getSimpleName();
+				String recordCount = Long.toString(record.getCount());
+				String recordTime = String.format("%.6fms", record.getTotalTime() / 1E6);
+				String [] receiverSplit = receiverName.split("#", 2);
+				Log.i("        %-30s%-60s%-40s%-10s%-20s", intentName, receiverSplit[0], receiverSplit[1], recordCount, recordTime);
+			}
 			new StopForwarderIntent().broadcast(intentManager);
 			Manager.stop(managers);
 		}
 		
-		intentManager.terminate(false);
+		intentManager.close(false, 1000);
 		primary.setIntentManager(null);
-		
 	}
 	
 	public ForwarderData getData() {

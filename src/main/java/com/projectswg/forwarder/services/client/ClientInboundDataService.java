@@ -43,30 +43,42 @@ public class ClientInboundDataService extends Service {
 	
 	@Multiplexer
 	private void handleDataChannel(ProtocolStack stack, DataChannel data) {
-		if (stack.addIncoming(data)) {
-			readAvailablePackets(stack);
-		} else {
-			Log.d("Inbound Out of Order %d (data)", data.getSequence());
-			for (short seq = stack.getRxSequence(); seq < data.getSequence(); seq++)
-				stack.send(new OutOfOrder(seq));
+		switch (stack.addIncoming(data)) {
+			case READY:
+				readAvailablePackets(stack);
+				break;
+			case OUT_OF_ORDER:
+				Log.d("Data/Inbound Received Data Out of Order %d", data.getSequence());
+				for (short seq = stack.getRxSequence(); seq < data.getSequence(); seq++)
+					stack.send(new OutOfOrder(seq));
+				break;
+			default:
+				break;
 		}
 	}
 	
 	@Multiplexer
 	private void handleFragmented(ProtocolStack stack, Fragmented frag) {
-		if (stack.addIncoming(frag)) {
-			readAvailablePackets(stack);
-		} else {
-			Log.d("Inbound Out of Order %d (frag)", frag.getSequence());
-			for (short seq = stack.getRxSequence(); seq < frag.getSequence(); seq++)
-				stack.send(new OutOfOrder(seq));
+		switch (stack.addIncoming(frag)) {
+			case READY:
+				readAvailablePackets(stack);
+				break;
+			case OUT_OF_ORDER:
+				Log.d("Data/Inbound Received Frag Out of Order %d", frag.getSequence());
+				for (short seq = stack.getRxSequence(); seq < frag.getSequence(); seq++)
+					stack.send(new OutOfOrder(seq));
+				break;
+			default:
+				break;
 		}
 	}
 	
 	private void readAvailablePackets(ProtocolStack stack) {
 		short highestSequence = -1;
+		boolean updatedSequence = false;
 		SequencedPacket packet = stack.getNextIncoming();
 		while (packet != null) {
+			Log.t("Data/Inbound Received: %s", packet);
 			if (packet instanceof DataChannel) {
 				for (byte [] data : ((DataChannel) packet).getPackets())
 					onData(data);
@@ -75,19 +87,17 @@ public class ClientInboundDataService extends Service {
 				if (data != null)
 					onData(data);
 			}
-			Log.t("Data Inbound: %s", packet);
 			highestSequence = packet.getSequence();
 			packet = stack.getNextIncoming();
+			updatedSequence = true;
 		}
-		if (highestSequence != -1) {
-			Log.t("Inbound Acknowledge %d", highestSequence);
+		if (updatedSequence)
 			stack.send(new Acknowledge(highestSequence));
-		}
 	}
 	
 	private void onData(byte [] data) {
 		PacketType type = PacketType.fromCrc(ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN).getInt(2));
-		Log.d("Incoming Data: %s", type);
+		Log.d("Data/Inbound Received Data: %s", type);
 		intentChain.broadcastAfter(getIntentManager(), new DataPacketInboundIntent(data));
 	}
 	

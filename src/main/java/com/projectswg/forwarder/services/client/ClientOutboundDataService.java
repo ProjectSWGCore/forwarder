@@ -12,8 +12,9 @@ import com.projectswg.forwarder.resources.networking.data.SequencedOutbound;
 import com.projectswg.forwarder.resources.networking.packets.Acknowledge;
 import com.projectswg.forwarder.resources.networking.packets.OutOfOrder;
 import com.projectswg.forwarder.resources.networking.packets.Packet;
+import me.joshlarson.jlcommon.concurrency.BasicThread;
 import me.joshlarson.jlcommon.concurrency.Delay;
-import me.joshlarson.jlcommon.concurrency.ScheduledThreadPool;
+import me.joshlarson.jlcommon.concurrency.SmartLock;
 import me.joshlarson.jlcommon.control.IntentHandler;
 import me.joshlarson.jlcommon.control.IntentMultiplexer;
 import me.joshlarson.jlcommon.control.IntentMultiplexer.Multiplexer;
@@ -24,28 +25,29 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public class ClientOutboundDataService extends Service {
 	
 	private final IntentMultiplexer multiplexer;
 	private final Set<ProtocolStack> activeStacks;
-	private final ScheduledThreadPool timerThread;
-	private final Object outboundMutex;
+	private final BasicThread sendThread;
+	private final SmartLock signaller;
 	
 	private ForwarderData data;
 	
 	public ClientOutboundDataService() {
 		this.multiplexer = new IntentMultiplexer(this, ProtocolStack.class, Packet.class);
 		this.activeStacks = ConcurrentHashMap.newKeySet();
-		this.timerThread = new ScheduledThreadPool(2, 5, "outbound-sender-%d");
-		this.outboundMutex = new Object();
+		this.sendThread = new BasicThread("outbound-sender", this::persistentSend);
+		this.signaller = new SmartLock();
 		this.data = null;
 	}
 	
 	@Override
 	public boolean terminate() {
-		timerThread.stop();
-		return timerThread.awaitTermination(1000);
+		sendThread.stop(true);
+		return sendThread.awaitTermination(1000);
 	}
 	
 	@IntentHandler
@@ -60,22 +62,17 @@ public class ClientOutboundDataService extends Service {
 	
 	@IntentHandler
 	private void handleClientConnectedIntent(ClientConnectedIntent cci) {
-		if (timerThread.isRunning())
+		if (sendThread.isExecuting())
 			return;
-		int interval = data.getOutboundTunerInterval();
-		if (interval <= 0)
-			interval = 20;
-		timerThread.start();
-		timerThread.executeWithFixedDelay(interval, interval, this::timerCallback);
-		timerThread.executeWithFixedRate(0, 5000, this::clearSentBit);
+		sendThread.start();
 	}
 	
 	@IntentHandler
 	private void handleClientDisconnectedIntent(ClientDisconnectedIntent cdi) {
-		if (!timerThread.isRunning())
+		if (!sendThread.isExecuting())
 			return;
-		timerThread.stop();
-		timerThread.awaitTermination(500);
+		sendThread.stop(true);
+		sendThread.awaitTermination(1000);
 	}
 	
 	@IntentHandler
@@ -92,103 +89,101 @@ public class ClientOutboundDataService extends Service {
 	private void handleDataPacketOutboundIntent(DataPacketOutboundIntent dpoi) {
 		PacketType type = PacketType.fromCrc(ByteBuffer.wrap(dpoi.getData()).order(ByteOrder.LITTLE_ENDIAN).getInt(2));
 		ClientServer filterServer = ClientServer.ZONE;
-		switch (type) {
-			case ERROR_MESSAGE:
-			case SERVER_ID:
-			case SERVER_NOW_EPOCH_TIME:
-				filterServer = null;
-				break;
-			case LOGIN_CLUSTER_STATUS:
-			case LOGIN_CLIENT_TOKEN:
-			case LOGIN_INCORRECT_CLIENT_ID:
-			case LOGIN_ENUM_CLUSTER:
-			case ENUMERATE_CHARACTER_ID:
-			case CHARACTER_CREATION_DISABLED:
-				filterServer = ClientServer.LOGIN;
-				break;
-			case HEART_BEAT_MESSAGE: {
-				HeartBeat heartbeat = new HeartBeat();
-				heartbeat.decode(NetBuffer.wrap(dpoi.getData()));
-				if (heartbeat.getPayload().length > 0) {
-					for (ProtocolStack stack : activeStacks)
-						stack.sendPing(heartbeat.getPayload());
-					return;
-				}
-				break;
-			}
-		}
-		synchronized (outboundMutex) {
-			if (filterServer == null) {
-				Log.d("Sending %d bytes to %s", dpoi.getData().length, activeStacks);
-				for (ProtocolStack stack : activeStacks)
-					stack.addOutbound(dpoi.getData());
-			} else {
-				final ClientServer finalFilterServer = filterServer;
-				ProtocolStack stack = activeStacks.stream().filter(s -> s.getServer() == finalFilterServer).findFirst().orElse(null);
-				if (stack != null) {
-					Log.d("Sending %d bytes to %s", dpoi.getData().length, stack);
-					stack.addOutbound(dpoi.getData());
+		if (type != null) {
+			switch (type) {
+				case ERROR_MESSAGE:
+				case SERVER_ID:
+				case SERVER_NOW_EPOCH_TIME:
+					filterServer = null;
+					break;
+				case LOGIN_CLUSTER_STATUS:
+				case LOGIN_CLIENT_TOKEN:
+				case LOGIN_INCORRECT_CLIENT_ID:
+				case LOGIN_ENUM_CLUSTER:
+				case ENUMERATE_CHARACTER_ID:
+				case CHARACTER_CREATION_DISABLED:
+				case DELETE_CHARACTER_REQUEST:
+				case DELETE_CHARACTER_RESPONSE:
+					filterServer = ClientServer.LOGIN;
+					break;
+				case HEART_BEAT_MESSAGE: {
+					HeartBeat heartbeat = new HeartBeat();
+					heartbeat.decode(NetBuffer.wrap(dpoi.getData()));
+					if (heartbeat.getPayload().length > 0) {
+						for (ProtocolStack stack : activeStacks)
+							stack.sendPing(heartbeat.getPayload());
+						return;
+					}
+					break;
 				}
 			}
 		}
+		final ClientServer finalFilterServer = filterServer;
+		ProtocolStack stack = activeStacks.stream().filter(s -> s.getServer() == finalFilterServer).findFirst().orElse(null);
+		if (stack == null) {
+			Log.d("Data/Oubound Sending %s [len=%d] to %s", type, dpoi.getData().length, activeStacks);
+			for (ProtocolStack active : activeStacks)
+				active.addOutbound(dpoi.getData());
+		} else {
+			Log.d("Data/Outbound Sending %s [len=%d] to %s", type, dpoi.getData().length, stack);
+			stack.addOutbound(dpoi.getData());
+		}
+		signaller.signal();
 	}
 	
 	@Multiplexer
 	private void handleAcknowledgement(ProtocolStack stack, Acknowledge ack) {
-		Log.t("Acknowledged: %d. Min Sequence: %d", ack.getSequence(), stack.getFirstUnacknowledgedOutbound());
-		synchronized (outboundMutex) {
-			stack.clearAcknowledgedOutbound(ack.getSequence());
-			for (SequencedOutbound outbound : stack.getOutboundPackagedBuffer()) {
-				outbound.setSent(false);
-			}
-		}
+		Log.t("Data/Outbound Client Acknowledged: %d. Min Sequence: %d", ack.getSequence(), stack.getFirstUnacknowledgedOutbound());
+		stack.clearAcknowledgedOutbound(ack.getSequence());
 	}
 	
 	@Multiplexer
 	private void handleOutOfOrder(ProtocolStack stack, OutOfOrder ooo) {
-		synchronized (outboundMutex) {
-			for (SequencedOutbound outbound : stack.getOutboundPackagedBuffer()) {
-				if (outbound.getSequence() > ooo.getSequence())
-					break;
-				outbound.setSent(false);
-			}
-		}
+		Log.t("Data/Outbound Out of Order: %d. Min Sequence: %d", ooo.getSequence(), stack.getFirstUnacknowledgedOutbound());
 	}
 	
-	private void clearSentBit() {
-		synchronized (outboundMutex) {
-			for (ProtocolStack stack : activeStacks) {
-				for (SequencedOutbound outbound : stack.getOutboundPackagedBuffer()) {
-					outbound.setSent(false);
-				}
-			}
-		}
-	}
-	
-	private void timerCallback() {
+	private void persistentSend() {
 		int maxSend = data.getOutboundTunerMaxSend();
 		if (maxSend <= 0)
-			maxSend = 100;
-		synchronized (outboundMutex) {
-			for (ProtocolStack stack : activeStacks) {
-				stack.fillOutboundPackagedBuffer(maxSend);
-				int sent = 0;
-				int runStart = Integer.MIN_VALUE;
-				int runEnd = 0;
-				for (SequencedOutbound outbound : stack.getOutboundPackagedBuffer()) {
-					runEnd = outbound.getSequence();
-					if (runStart == Integer.MIN_VALUE) {
-						runStart = runEnd;
+			maxSend = 400;
+		int interval = data.getOutboundTunerInterval();
+		if (interval <= 0)
+			interval = 1000;
+		
+		int bucket = 0;
+		int [] sendCounts = new int[interval / 20];
+		SequencedOutbound [] buffer = new SequencedOutbound[maxSend];
+		Log.d("Data/Outbound Starting Persistent Send");
+		while (!Delay.isInterrupted()) {
+			sendCounts[bucket] = 0;
+			
+			int previousInterval = 0;
+			for (int count : sendCounts)
+				previousInterval += count;
+			if (previousInterval < maxSend) {
+				for (ProtocolStack stack : activeStacks) {
+					stack.fillOutboundPackagedBuffer(maxSend);
+					int count = stack.fillOutboundBuffer(buffer);
+					for (int i = 0; i < count && Delay.sleepMicro(50); i++) {
+						stack.send(buffer[i].getData());
 					}
-					stack.send(outbound.getData());
-					Delay.sleepMicro(50);
-					if (sent++ >= maxSend)
-						break;
+					
+					if (count > 0)
+						Log.t("Data/Outbound Sent %d  Start: %d", count, buffer[0].getSequence());
+					sendCounts[bucket] += count;
 				}
-				if (runStart != Integer.MIN_VALUE)
-					Log.t("Sending to %s: %d - %d", stack.getSource(), runStart, runEnd);
+				try {
+					signaller.await(20, TimeUnit.MILLISECONDS);
+				} catch (InterruptedException e) {
+					break;
+				}
+			} else {
+				Delay.sleepMilli(20);
 			}
+			
+			bucket = (bucket + 1) % sendCounts.length;
 		}
+		Log.d("Data/Outbound Stopping Persistent Send");
 	}
 	
 }

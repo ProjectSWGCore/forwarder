@@ -31,6 +31,7 @@ import com.projectswg.common.network.NetBuffer;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class DataChannel extends Packet implements SequencedPacket {
@@ -48,6 +49,13 @@ public class DataChannel extends Packet implements SequencedPacket {
 		this.multiPacket = 0;
 	}
 	
+	public DataChannel(List<byte[]> content) {
+		this.content = new ArrayList<>(content);
+		this.channel = Channel.DATA_CHANNEL_A;
+		this.sequence = 0;
+		this.multiPacket = (short) (content.isEmpty() ? 0 : 0x19);
+	}
+	
 	public DataChannel(ByteBuffer data) {
 		this();
 		decode(data);
@@ -55,9 +63,7 @@ public class DataChannel extends Packet implements SequencedPacket {
 	
 	public DataChannel(byte[][] packets) {
 		this();
-		for (byte[] p : packets) {
-			content.add(p);
-		}
+		content.addAll(Arrays.asList(packets));
 	}
 	
 	@Override
@@ -74,7 +80,7 @@ public class DataChannel extends Packet implements SequencedPacket {
 		sequence = getNetShort(data);
 		multiPacket = getNetShort(data);
 		if (multiPacket == 0x19) {
-			int length = 0;
+			int length;
 			while (data.remaining() > 1) {
 				length = data.get() & 0xFF;
 				if (length == 0xFF)
@@ -97,11 +103,6 @@ public class DataChannel extends Packet implements SequencedPacket {
 	
 	@Override
 	public ByteBuffer encode() {
-		return encode(this.sequence);
-	}
-	
-	public ByteBuffer encode(int sequence) {
-		this.sequence = (short) sequence;
 		NetBuffer data;
 		if (content.size() == 1) {
 			byte[] pData = content.get(0);
@@ -151,19 +152,8 @@ public class DataChannel extends Packet implements SequencedPacket {
 	}
 	
 	@Override
-	public int compareTo(SequencedPacket p) {
-		if (sequence < p.getSequence())
-			return -1;
-		if (sequence == p.getSequence())
-			return 0;
-		return 1;
-	}
-	
-	@Override
 	public boolean equals(Object o) {
-		if (!(o instanceof DataChannel))
-			return false;
-		return ((DataChannel) o).sequence == sequence;
+		return o instanceof DataChannel && sequence == ((DataChannel) o).sequence;
 	}
 	
 	@Override

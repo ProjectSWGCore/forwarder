@@ -1,19 +1,24 @@
 package com.projectswg.forwarder.resources.networking.data;
 
-public class SequencedOutbound {
+import com.projectswg.forwarder.resources.networking.packets.SequencedPacket;
+
+import java.nio.ByteBuffer;
+
+public class SequencedOutbound implements SequencedPacket {
 	
-	private final short sequence;
-	private final byte [] data;
+	private final SequencedPacket packet;
+	private byte [] data;
 	private boolean sent;
 	
-	public SequencedOutbound(short sequence, byte [] data) {
-		this.sequence = sequence;
-		this.data = data;
+	public SequencedOutbound(SequencedPacket packet) {
+		this.packet = packet;
+		this.data = packet.encode().array();
 		this.sent = false;
 	}
 	
+	@Override
 	public short getSequence() {
-		return sequence;
+		return packet.getSequence();
 	}
 	
 	public byte[] getData() {
@@ -22,6 +27,17 @@ public class SequencedOutbound {
 	
 	public boolean isSent() {
 		return sent;
+	}
+	
+	@Override
+	public ByteBuffer encode() {
+		return packet.encode();
+	}
+	
+	@Override
+	public void setSequence(short sequence) {
+		this.packet.setSequence(sequence);
+		this.data = packet.encode().array();
 	}
 	
 	public void setSent(boolean sent) {

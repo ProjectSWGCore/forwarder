@@ -1,9 +1,8 @@
 package com.projectswg.forwarder.resources.networking.data;
 
+import com.projectswg.common.network.NetBuffer;
 import com.projectswg.forwarder.resources.networking.packets.Fragmented;
-import com.projectswg.forwarder.resources.networking.packets.Packet;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,27 +21,25 @@ public class FragmentedProcessor {
 	public byte [] addFragmented(Fragmented frag) {
 		fragmentedBuffer.add(frag);
 		frag = fragmentedBuffer.get(0);
-		ByteBuffer data = frag.getPacketData();
-		data.position(4);
-		int size = Packet.getNetInt(data);
-		int index = data.remaining();
-		for (int i = 1; i < fragmentedBuffer.size() && index < size; i++)
-			index += fragmentedBuffer.get(i).getPacketData().limit()-4;
-		if (index == size)
-			return processFragmentedReady(size);
-		return null;
+		
+		NetBuffer payload = NetBuffer.wrap(frag.getPayload());
+		int length = payload.getNetInt();
+		
+		if ((int) ((length+4.0) / 489) > fragmentedBuffer.size())
+			return null; // Doesn't have the minimum number of required packets
+		
+		return processFragmentedReady(length);
 	}
 	
 	private byte [] processFragmentedReady(int size) {
 		byte [] combined = new byte[size];
 		int index = 0;
 		while (index < combined.length) {
-			ByteBuffer packet = fragmentedBuffer.get(0).getPacketData();
-			packet.position(index == 0 ? 8 : 4);
-			int len = packet.remaining();
-			packet.get(combined, index, len);
-			index += len;
-			fragmentedBuffer.remove(0);
+			byte [] payload = fragmentedBuffer.remove(0).getPayload();
+			int header = (index == 0) ? 4 : 0;
+			
+			System.arraycopy(payload, header, combined, index, payload.length - header);
+			index += payload.length - header;
 		}
 		return combined;
 	}

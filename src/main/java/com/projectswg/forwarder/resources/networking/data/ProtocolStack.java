@@ -13,37 +13,29 @@ import java.util.function.BiConsumer;
 
 public class ProtocolStack {
 	
-	private final PriorityQueue<SequencedPacket> sequenced;
 	private final FragmentedProcessor fragmentedProcessor;
 	private final InetSocketAddress source;
 	private final BiConsumer<InetSocketAddress, byte[]> sender;
 	private final ClientServer server;
 	private final Queue<byte []> outboundRaw;
-	private final Queue<SequencedOutbound> outboundPackaged;
+	private final ConnectionStream<SequencedPacket> inbound;
+	private final ConnectionStream<SequencedOutbound> outbound;
 	private final Packager packager;
-	private final Object txMutex;
 	
 	private InetSocketAddress pingSource;
 	private int connectionId;
-	private short rxSequence;
-	private short txSequence;
-	private boolean txOverflow;
 	
 	public ProtocolStack(InetSocketAddress source, ClientServer server, BiConsumer<InetSocketAddress, byte[]> sender) {
-		this.sequenced = new PriorityQueue<>();
 		this.fragmentedProcessor = new FragmentedProcessor();
 		this.source = source;
 		this.sender = sender;
 		this.server = server;
 		this.outboundRaw = new LinkedList<>();
-		this.outboundPackaged = new LinkedList<>();
-		this.packager = new Packager(outboundRaw, outboundPackaged, this);
-		this.txMutex = new Object();
+		this.inbound = new ConnectionStream<>();
+		this.outbound = new ConnectionStream<>();
+		this.packager = new Packager(outboundRaw, outbound, this);
 		
 		this.connectionId = 0;
-		this.rxSequence = 0;
-		this.txSequence = 0;
-		this.txOverflow = false;
 	}
 	
 	public void send(Packet packet) {
@@ -74,11 +66,11 @@ public class ProtocolStack {
 	}
 	
 	public short getRxSequence() {
-		return rxSequence;
+		return inbound.getSequence();
 	}
 	
 	public short getTxSequence() {
-		return txSequence;
+		return outbound.getSequence();
 	}
 	
 	public void setPingSource(InetSocketAddress source) {
@@ -89,46 +81,12 @@ public class ProtocolStack {
 		this.connectionId = connectionId;
 	}
 	
-	public short getAndIncrementTxSequence() {
-		return getAndIncrementTxSequence(1);
-	}
-	
-	public short getAndIncrementTxSequence(int amount) {
-		synchronized (txMutex) {
-			short prev = this.txSequence;
-			short next = prev;
-			next += amount;
-			if (prev > next)
-				txOverflow = true;
-			this.txSequence = next;
-			return prev;
-		}
-	}
-	
-	public boolean addIncoming(@NotNull SequencedPacket packet) {
-		synchronized (sequenced) {
-			if (packet.getSequence() < rxSequence)
-				return true;
-			// If it already exists in here, don't add it again
-			for (SequencedPacket seq : sequenced) {
-				if (seq.getSequence() == packet.getSequence())
-					return true;
-			}
-			sequenced.add(packet);
-			packet = sequenced.peek();
-			assert packet != null : "the world is on fire";
-			return packet.getSequence() == rxSequence;
-		}
+	public SequencedStatus addIncoming(@NotNull SequencedPacket packet) {
+		return inbound.addUnordered(packet);
 	}
 	
 	public SequencedPacket getNextIncoming() {
-		synchronized (sequenced) {
-			SequencedPacket peek = sequenced.peek();
-			if (peek == null || peek.getSequence() != rxSequence)
-				return null;
-			rxSequence++;
-			return sequenced.poll();
-		}
+		return inbound.poll();
 	}
 	
 	public byte [] addFragmented(Fragmented frag) {
@@ -140,37 +98,115 @@ public class ProtocolStack {
 	}
 	
 	public short getFirstUnacknowledgedOutbound() {
-		SequencedOutbound out = outboundPackaged.peek();
+		SequencedOutbound out = outbound.peek();
 		if (out == null)
 			return -1;
 		return out.getSequence();
 	}
 	
 	public void clearAcknowledgedOutbound(short sequence) {
-		synchronized (txMutex) {
-			if (txOverflow && sequence <= txSequence) {
-				outboundPackaged.removeIf(out -> out.getSequence() > txSequence);
-				txOverflow = false;
-			}
-			SequencedOutbound out = outboundPackaged.peek();
-			while (out != null && out.getSequence() <= sequence) {
-				outboundPackaged.poll();
-				out = outboundPackaged.peek();
-			}
-		}
+		outbound.removeOrdered(sequence);
 	}
 	
 	public void fillOutboundPackagedBuffer(int maxPackaged) {
 		packager.handle(maxPackaged);
 	}
 	
-	public Collection<SequencedOutbound> getOutboundPackagedBuffer() {
-		return Collections.unmodifiableCollection(outboundPackaged);
+	public int fillOutboundBuffer(SequencedOutbound [] buffer) {
+		return outbound.fillBuffer(buffer);
 	}
 	
 	@Override
 	public String toString() {
 		return String.format("ProtocolStack[server=%s, source=%s, connectionId=%d]", server, source, connectionId);
+	}
+	
+	public static class ConnectionStream<T extends SequencedPacket> {
+		
+		private final PriorityQueue<T> sequenced;
+		private final PriorityQueue<T> queued;
+		
+		private short sequence;
+		
+		public ConnectionStream() {
+			this.sequenced = new PriorityQueue<>();
+			this.queued = new PriorityQueue<>();
+			this.sequence = 0;
+		}
+		
+		public short getSequence() {
+			return sequence;
+		}
+		
+		public synchronized SequencedStatus addUnordered(@NotNull T packet) {
+			if (SequencedPacket.compare(sequence, packet.getSequence()) > 0) {
+				T peek = peek();
+				return peek != null && peek.getSequence() == sequence ? SequencedStatus.READY : SequencedStatus.STALE;
+			}
+			
+			if (packet.getSequence() == sequence) {
+				sequenced.add(packet);
+				sequence++;
+				
+				// Add queued OOO packets
+				T queue;
+				while ((queue = queued.peek()) != null && queue.getSequence() == sequence) {
+					sequenced.add(queued.poll());
+					sequence++;
+				}
+				
+				return SequencedStatus.READY;
+			} else {
+				queued.add(packet);
+				
+				return SequencedStatus.OUT_OF_ORDER;
+			}
+		}
+		
+		public synchronized void addOrdered(@NotNull T packet) {
+			packet.setSequence(sequence);
+			addUnordered(packet);
+		}
+		
+		public synchronized void removeOrdered(short sequence) {
+			T packet;
+			List<Short> sequencesRemoved = new ArrayList<>();
+			while ((packet = sequenced.peek()) != null && SequencedPacket.compare(sequence, packet.getSequence()) >= 0) {
+				T removed = sequenced.poll();
+				assert packet == removed;
+				sequencesRemoved.add(packet.getSequence());
+			}
+			Log.t("Removed acknowledged: %s", sequencesRemoved);
+		}
+		
+		public synchronized T peek() {
+			return sequenced.peek();
+		}
+		
+		public synchronized T poll() {
+			return sequenced.poll();
+		}
+		
+		public synchronized int fillBuffer(T [] buffer) {
+			int n = 0;
+			for (T packet : sequenced) {
+				if (n >= buffer.length)
+					break;
+				buffer[n++] = packet;
+			}
+			return n;
+		}
+		
+		public int size() {
+			return sequenced.size();
+		}
+		
+	}
+	
+	public enum SequencedStatus {
+		READY,
+		OUT_OF_ORDER,
+		STALE
 	}
 	
 }

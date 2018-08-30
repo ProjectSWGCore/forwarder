@@ -4,6 +4,8 @@ import com.projectswg.forwarder.Forwarder.ForwarderData;
 import com.projectswg.forwarder.intents.client.*;
 import com.projectswg.forwarder.intents.control.StartForwarderIntent;
 import com.projectswg.forwarder.intents.control.StopForwarderIntent;
+import com.projectswg.forwarder.intents.server.RequestServerConnectionIntent;
+import com.projectswg.forwarder.intents.server.ServerConnectedIntent;
 import com.projectswg.forwarder.intents.server.ServerDisconnectedIntent;
 import com.projectswg.forwarder.resources.networking.ClientServer;
 import com.projectswg.forwarder.resources.networking.data.ProtocolStack;
@@ -20,11 +22,15 @@ import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ClientServerService extends Service {
 	
 	private final IntentChain intentChain;
 	private final Map<ClientServer, ProtocolStack> stacks;
+	private final AtomicBoolean serverConnection;
+	private final AtomicReference<SessionRequest> cachedSessionRequest;
 	
 	private ForwarderData data;
 	private UDPServer loginServer;
@@ -33,6 +39,8 @@ public class ClientServerService extends Service {
 	public ClientServerService() {
 		this.intentChain = new IntentChain();
 		this.stacks = new EnumMap<>(ClientServer.class);
+		this.serverConnection = new AtomicBoolean(false);
+		this.cachedSessionRequest = new AtomicReference<>(null);
 		this.data = null;
 		this.loginServer = null;
 		this.zoneServer = null;
@@ -94,7 +102,18 @@ public class ClientServerService extends Service {
 	}
 	
 	@IntentHandler
+	private void handleServerConnectedIntent(ServerConnectedIntent sci) {
+		serverConnection.set(true);
+		SessionRequest request = this.cachedSessionRequest.getAndSet(null);
+		if (request != null) {
+			byte [] data = request.encode().array();
+			onLoginPacket(new DatagramPacket(data, data.length, new InetSocketAddress(request.getAddress(), request.getPort())));
+		}
+	}
+	
+	@IntentHandler
 	private void handleServerDisconnectedIntent(ServerDisconnectedIntent sdi) {
+		serverConnection.set(false);
 		closeConnection(ClientServer.LOGIN);
 		closeConnection(ClientServer.ZONE);
 	}
@@ -102,10 +121,10 @@ public class ClientServerService extends Service {
 	private void customizeUdpServer(DatagramSocket socket) {
 		try {
 			socket.setReuseAddress(false);
-			socket.setTrafficClass(0x02 | 0x04 | 0x08 | 0x10);
+			socket.setTrafficClass(0x10);
 			socket.setBroadcast(false);
-			socket.setReceiveBufferSize(496 * 2048);
-			socket.setSendBufferSize(496 * 2048);
+			socket.setReceiveBufferSize(64 * 1024);
+			socket.setSendBufferSize(64 * 1024);
 		} catch (SocketException e) {
 			Log.w(e);
 		}
@@ -134,6 +153,8 @@ public class ClientServerService extends Service {
 		Packet parsed = parse(data);
 		if (parsed == null)
 			return;
+		parsed.setAddress(source.getAddress());
+		parsed.setPort(source.getPort());
 		if (parsed instanceof MultiPacket) {
 			for (byte [] child : ((MultiPacket) parsed).getPackets()) {
 				process(source, server, child);
@@ -154,6 +175,13 @@ public class ClientServerService extends Service {
 	}
 	
 	private ProtocolStack process(InetSocketAddress source, ClientServer server, Packet parsed) {
+		if (!serverConnection.get()) {
+			if (parsed instanceof SessionRequest) {
+				cachedSessionRequest.set((SessionRequest) parsed);
+				intentChain.broadcastAfter(getIntentManager(), new RequestServerConnectionIntent());
+			}
+			return null;
+		}
 		if (parsed instanceof SessionRequest)
 			return onSessionRequest(source, server, (SessionRequest) parsed);
 		if (parsed instanceof Disconnect)
@@ -173,6 +201,11 @@ public class ClientServerService extends Service {
 	}
 	
 	private ProtocolStack onSessionRequest(InetSocketAddress source, ClientServer server, SessionRequest request) {
+		ProtocolStack current = stacks.get(server);
+		if (current != null && request.getConnectionId() != current.getConnectionId()) {
+			closeConnection(server);
+			return null;
+		}
 		ProtocolStack stack = new ProtocolStack(source, server, (remote, data) -> send(remote, server, data));
 		stack.setConnectionId(request.getConnectionId());
 		
