@@ -66,6 +66,11 @@ public class DataChannel extends Packet implements SequencedPacket {
 		content.addAll(Arrays.asList(packets));
 	}
 	
+	public DataChannel(byte [] packet) {
+		this();
+		content.add(packet);
+	}
+	
 	@Override
 	public void decode(ByteBuffer data) {
 		super.decode(data);
@@ -103,29 +108,18 @@ public class DataChannel extends Packet implements SequencedPacket {
 	
 	@Override
 	public ByteBuffer encode() {
-		NetBuffer data;
-		if (content.size() == 1) {
-			byte[] pData = content.get(0);
-			data = NetBuffer.allocate(4 + pData.length);
-			data.addNetShort(channel.getOpcode());
-			data.addNetShort(sequence);
-			data.addRawArray(pData);
-		} else if (content.size() > 1) {
-			data = NetBuffer.allocate(getLength());
-			data.addNetShort(channel.getOpcode());
-			data.addNetShort(sequence);
-			data.addNetShort(0x19);
-			for (byte[] pData : content) {
-				if (pData.length >= 0xFF) {
-					data.addByte(0xFF);
-					data.addNetShort(pData.length);
-				} else {
-					data.addByte(pData.length);
-				}
-				data.addRawArray(pData);
+		NetBuffer data = NetBuffer.allocate(getLength());
+		data.addNetShort(channel.getOpcode());
+		data.addNetShort(sequence);
+		data.addNetShort(0x19);
+		for (byte[] pData : content) {
+			if (pData.length >= 0xFF) {
+				data.addByte(0xFF);
+				data.addNetShort(pData.length);
+			} else {
+				data.addByte(pData.length);
 			}
-		} else {
-			data = NetBuffer.allocate(0);
+			data.addRawArray(pData);
 		}
 		return data.getBuffer();
 	}
@@ -139,16 +133,12 @@ public class DataChannel extends Packet implements SequencedPacket {
 	}
 	
 	public int getLength() {
-		if (content.size() == 1) {
-			return 4 + content.get(0).length;
-		} else {
-			int length = 6;
-			for (byte[] packet : content) {
-				int addLength = packet.length;
-				length += 1 + addLength + ((addLength >= 0xFF) ? 2 : 0);
-			}
-			return length;
+		int length = 6;
+		for (byte[] packet : content) {
+			int addLength = packet.length;
+			length += 1 + addLength + ((addLength >= 0xFF) ? 2 : 0);
 		}
+		return length;
 	}
 	
 	@Override

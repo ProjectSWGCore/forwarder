@@ -1,7 +1,7 @@
 package com.projectswg.forwarder.services.server;
 
-import com.projectswg.connection.HolocoreSocket;
-import com.projectswg.connection.RawPacket;
+import com.projectswg.holocore.client.HolocoreSocket;
+import com.projectswg.holocore.client.RawPacket;
 import com.projectswg.forwarder.Forwarder.ForwarderData;
 import com.projectswg.forwarder.intents.client.ClientDisconnectedIntent;
 import com.projectswg.forwarder.intents.client.DataPacketInboundIntent;
@@ -55,9 +55,12 @@ public class ServerConnectionService extends Service {
 	
 	@IntentHandler
 	private void handleRequestServerConnectionIntent(RequestServerConnectionIntent rsci) {
-		if (thread.isExecuting())
-			stopRunningLoop();
-		thread.start();
+		HolocoreSocket holocore = this.holocore;
+		if (holocore != null)
+			return; // It's trying to connect - give it a little more time
+		
+		if (stopRunningLoop())
+			thread.start();
 	}
 	
 	@IntentHandler
@@ -73,12 +76,15 @@ public class ServerConnectionService extends Service {
 	}
 	
 	private boolean stopRunningLoop() {
+		if (!thread.isExecuting())
+			return true;
 		thread.stop(true);
 		return thread.awaitTermination(1000);
 	}
 	
 	private void primaryConnectionLoop() {
-		try (HolocoreSocket holocore = new HolocoreSocket(data.getAddress().getAddress(), data.getAddress().getPort())) {
+		boolean didConnect = false;
+		try (HolocoreSocket holocore = new HolocoreSocket(data.getAddress().getAddress(), data.getAddress().getPort(), data.isVerifyServer())) {
 			this.holocore = holocore;
 			Log.t("Attempting to connect to server at %s", holocore.getRemoteAddress());
 			if (!holocore.connect(CONNECT_TIMEOUT)) { 
@@ -87,11 +93,15 @@ public class ServerConnectionService extends Service {
 			}
 			Log.i("Successfully connected to server at %s", holocore.getRemoteAddress());
 			
+			didConnect = true;
 			intentChain.broadcastAfter(getIntentManager(), new ServerConnectedIntent());
 			while (holocore.isConnected()) {
 				RawPacket inbound = holocore.receive();
 				if (inbound == null) {
-					Log.w("Server closed connection!");
+					if (holocore.isConnected())
+						Log.w("Server connection interrupted");
+					else
+						Log.w("Server closed connection!");
 					return;
 				}
 				intentChain.broadcastAfter(getIntentManager(), new DataPacketOutboundIntent(interceptor.interceptServer(inbound.getData())));
@@ -101,7 +111,8 @@ public class ServerConnectionService extends Service {
 			Log.w(t);
 		} finally {
 			Log.i("Disconnected from server.");
-			intentChain.broadcastAfter(getIntentManager(), new ServerDisconnectedIntent());
+			if (didConnect)
+				intentChain.broadcastAfter(getIntentManager(), new ServerDisconnectedIntent());
 			this.holocore = null;
 		}
 	}

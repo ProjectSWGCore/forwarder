@@ -106,11 +106,11 @@ public class Fragmented extends Packet implements SequencedPacket {
 	
 	public static byte [][] split(byte [] data) {
 		int offset = 0;
-		int packetCount = (int) Math.ceil((data.length+4)/489.0);
+		int packetCount = (int) Math.ceil((data.length+4)/16377.0); // 489
 		byte [][] packets = new byte[packetCount][];
 		for (int i = 0; i < packetCount; i++) {
 			int header = (i == 0) ? 4 : 0;
-			ByteBuffer segment = ByteBuffer.allocate(Math.min(data.length-offset-header, 489)).order(ByteOrder.BIG_ENDIAN);
+			ByteBuffer segment = ByteBuffer.allocate(Math.min(data.length-offset-header, 16377)).order(ByteOrder.BIG_ENDIAN);
 			if (i == 0)
 				segment.putInt(data.length);
 			int segmentLength = segment.remaining();

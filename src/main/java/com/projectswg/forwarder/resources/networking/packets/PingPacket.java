@@ -1,5 +1,7 @@
 package com.projectswg.forwarder.resources.networking.packets;
 
+import com.projectswg.common.utilities.ByteUtilities;
+
 import java.nio.ByteBuffer;
 
 public class PingPacket extends Packet {
@@ -22,6 +24,11 @@ public class PingPacket extends Packet {
 	
 	public byte [] getPayload() {
 		return payload;
+	}
+	
+	@Override
+	public String toString() {
+		return "PingPacket[payload=" + ByteUtilities.getHexString(payload) + "]";
 	}
 	
 }

@@ -139,10 +139,12 @@ public class Forwarder {
 	public static class ForwarderData {
 		
 		private InetSocketAddress address	= null;
+		private boolean verifyServer		= true;
 		private String username				= null;
 		private String password				= null;
 		private int loginPort				= 0;
 		private int zonePort				= 0;
+		private int pingPort				= 0;
 		private int outboundTunerMaxSend	= 100;
 		private int outboundTunerInterval	= 20;
 		
@@ -150,6 +152,10 @@ public class Forwarder {
 		
 		public InetSocketAddress getAddress() {
 			return address;
+		}
+		
+		public boolean isVerifyServer() {
+			return verifyServer;
 		}
 		
 		public String getUsername() {
@@ -168,6 +174,10 @@ public class Forwarder {
 			return zonePort;
 		}
 		
+		public int getPingPort() {
+			return pingPort;
+		}
+		
 		public int getOutboundTunerMaxSend() {
 			return outboundTunerMaxSend;
 		}
@@ -178,6 +188,10 @@ public class Forwarder {
 		
 		public void setAddress(InetSocketAddress address) {
 			this.address = address;
+		}
+		
+		public void setVerifyServer(boolean verifyServer) {
+			this.verifyServer = verifyServer;
 		}
 		
 		public void setUsername(String username) {
@@ -194,6 +208,10 @@ public class Forwarder {
 		
 		public void setZonePort(int zonePort) {
 			this.zonePort = zonePort;
+		}
+		
+		public void setPingPort(int pingPort) {
+			this.pingPort = pingPort;
 		}
 		
 		public void setOutboundTunerMaxSend(int outboundTunerMaxSend) {

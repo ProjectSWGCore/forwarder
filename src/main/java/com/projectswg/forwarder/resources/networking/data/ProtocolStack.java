@@ -9,6 +9,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.net.InetSocketAddress;
 import java.util.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.BiConsumer;
 
 public class ProtocolStack {
@@ -17,7 +20,7 @@ public class ProtocolStack {
 	private final InetSocketAddress source;
 	private final BiConsumer<InetSocketAddress, byte[]> sender;
 	private final ClientServer server;
-	private final Queue<byte []> outboundRaw;
+	private final BlockingQueue<byte []> outboundRaw;
 	private final ConnectionStream<SequencedPacket> inbound;
 	private final ConnectionStream<SequencedOutbound> outbound;
 	private final Packager packager;
@@ -30,7 +33,7 @@ public class ProtocolStack {
 		this.source = source;
 		this.sender = sender;
 		this.server = server;
-		this.outboundRaw = new LinkedList<>();
+		this.outboundRaw = new LinkedBlockingQueue<>();
 		this.inbound = new ConnectionStream<>();
 		this.outbound = new ConnectionStream<>();
 		this.packager = new Packager(outboundRaw, outbound, this);
@@ -94,7 +97,11 @@ public class ProtocolStack {
 	}
 	
 	public void addOutbound(@NotNull byte [] data) {
-		outboundRaw.offer(data);
+		try {
+			outboundRaw.put(data);
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		}
 	}
 	
 	public short getFirstUnacknowledgedOutbound() {
@@ -108,11 +115,11 @@ public class ProtocolStack {
 		outbound.removeOrdered(sequence);
 	}
 	
-	public void fillOutboundPackagedBuffer(int maxPackaged) {
+	public synchronized void fillOutboundPackagedBuffer(int maxPackaged) {
 		packager.handle(maxPackaged);
 	}
 	
-	public int fillOutboundBuffer(SequencedOutbound [] buffer) {
+	public synchronized int fillOutboundBuffer(SequencedOutbound [] buffer) {
 		return outbound.fillBuffer(buffer);
 	}
 	
@@ -126,31 +133,30 @@ public class ProtocolStack {
 		private final PriorityQueue<T> sequenced;
 		private final PriorityQueue<T> queued;
 		
-		private short sequence;
+		private long sequence;
 		
 		public ConnectionStream() {
 			this.sequenced = new PriorityQueue<>();
 			this.queued = new PriorityQueue<>();
-			this.sequence = 0;
 		}
 		
 		public short getSequence() {
-			return sequence;
+			return (short) sequence;
 		}
 		
 		public synchronized SequencedStatus addUnordered(@NotNull T packet) {
-			if (SequencedPacket.compare(sequence, packet.getSequence()) > 0) {
+			if (SequencedPacket.compare(getSequence(), packet.getSequence()) > 0) {
 				T peek = peek();
-				return peek != null && peek.getSequence() == sequence ? SequencedStatus.READY : SequencedStatus.STALE;
+				return peek != null && peek.getSequence() == getSequence() ? SequencedStatus.READY : SequencedStatus.STALE;
 			}
 			
-			if (packet.getSequence() == sequence) {
+			if (packet.getSequence() == getSequence()) {
 				sequenced.add(packet);
 				sequence++;
 				
 				// Add queued OOO packets
 				T queue;
-				while ((queue = queued.peek()) != null && queue.getSequence() == sequence) {
+				while ((queue = queued.peek()) != null && queue.getSequence() == getSequence()) {
 					sequenced.add(queued.poll());
 					sequence++;
 				}
@@ -164,7 +170,7 @@ public class ProtocolStack {
 		}
 		
 		public synchronized void addOrdered(@NotNull T packet) {
-			packet.setSequence(sequence);
+			packet.setSequence(getSequence());
 			addUnordered(packet);
 		}
 		

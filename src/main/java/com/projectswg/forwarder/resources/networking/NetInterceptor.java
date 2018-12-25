@@ -58,7 +58,7 @@ public class NetInterceptor {
 		for (Galaxy g : cluster.getGalaxies()) {
 			g.setAddress("127.0.0.1");
 			g.setZonePort(this.data.getZonePort());
-			g.setPingPort(this.data.getZonePort());
+			g.setPingPort(this.data.getPingPort());
 		}
 		return cluster.encode().array();
 	}

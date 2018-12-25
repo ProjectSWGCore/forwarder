@@ -7,16 +7,17 @@ import com.projectswg.forwarder.resources.networking.packets.Fragmented;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Packager {
 	
 	private final AtomicInteger size;
 	private final List<byte[]> dataChannel;
-	private final Queue<byte[]> outboundRaw;
+	private final BlockingQueue<byte[]> outboundRaw;
 	private final ConnectionStream<SequencedOutbound> outboundPackaged;
 	
-	public Packager(Queue<byte[]> outboundRaw, ConnectionStream<SequencedOutbound> outboundPackaged, ProtocolStack stack) {
+	public Packager(BlockingQueue<byte[]> outboundRaw, ConnectionStream<SequencedOutbound> outboundPackaged, ProtocolStack stack) {
 		this.size = new AtomicInteger(8);
 		this.dataChannel = new ArrayList<>();
 		this.outboundRaw = outboundRaw;
@@ -27,16 +28,17 @@ public class Packager {
 		byte [] packet;
 		int packetSize;
 		
-		while (!outboundRaw.isEmpty() && outboundPackaged.size() < maxPackaged) {
+		while (outboundPackaged.size() < maxPackaged) {
 			packet = outboundRaw.poll();
 			if (packet == null)
 				break;
+			
 			packetSize = getPacketLength(packet);
-			
-			if (size.get() + packetSize >= 496) // overflowed previous packet
+
+			if (size.get() + packetSize >= 16384) // max data channel size
 				sendDataChannel();
-			
-			if (packetSize < 496) {
+
+			if (packetSize < 16384) { // if overflowed, must go into fragmented
 				addToDataChannel(packet, packetSize);
 			} else {
 				sendFragmented(packet);

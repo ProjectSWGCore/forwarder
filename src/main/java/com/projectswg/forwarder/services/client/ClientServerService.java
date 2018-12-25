@@ -19,6 +19,7 @@ import me.joshlarson.jlcommon.network.UDPServer;
 import me.joshlarson.jlcommon.utilities.ByteUtilities;
 
 import java.net.*;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.util.EnumMap;
 import java.util.Map;
@@ -31,24 +32,34 @@ public class ClientServerService extends Service {
 	private final Map<ClientServer, ProtocolStack> stacks;
 	private final AtomicBoolean serverConnection;
 	private final AtomicReference<SessionRequest> cachedSessionRequest;
+	private final AtomicReference<InetSocketAddress> lastPing;
 	
 	private ForwarderData data;
 	private UDPServer loginServer;
 	private UDPServer zoneServer;
+	private UDPServer pingServer;
 	
 	public ClientServerService() {
 		this.intentChain = new IntentChain();
 		this.stacks = new EnumMap<>(ClientServer.class);
 		this.serverConnection = new AtomicBoolean(false);
 		this.cachedSessionRequest = new AtomicReference<>(null);
+		this.lastPing = new AtomicReference<>(null);
 		this.data = null;
 		this.loginServer = null;
 		this.zoneServer = null;
+		this.pingServer = null;
 	}
 	
 	@Override
 	public boolean isOperational() {
-		return data == null || (loginServer != null && zoneServer != null && loginServer.isRunning() && zoneServer.isRunning());
+		if (data == null)
+			return true;
+		if (loginServer == null || !loginServer.isRunning())
+			return false;
+		if (zoneServer == null || !zoneServer.isRunning())
+			return false;
+		return pingServer != null && pingServer.isRunning();
 	}
 	
 	@Override
@@ -66,24 +77,32 @@ public class ClientServerService extends Service {
 			loginServer = new UDPServer(new InetSocketAddress(InetAddress.getLoopbackAddress(), data.getLoginPort()), 496, this::onLoginPacket);
 			Log.t("Initializing zone udp server...");
 			zoneServer = new UDPServer(new InetSocketAddress(InetAddress.getLoopbackAddress(), data.getZonePort()), 496, this::onZonePacket);
+			Log.t("Initializing ping udp server...");
+			pingServer = new UDPServer(new InetSocketAddress(InetAddress.getLoopbackAddress(), data.getPingPort()), 496, this::onPingPacket);
 			
 			Log.t("Binding to login server...");
 			loginServer.bind(this::customizeUdpServer);
 			Log.t("Binding to zone server...");
 			zoneServer.bind(this::customizeUdpServer);
+			Log.t("Binding to ping server...");
+			pingServer.bind(this::customizeUdpServer);
 			
 			data.setLoginPort(loginServer.getPort());
 			data.setZonePort(zoneServer.getPort());
+			data.setPingPort(pingServer.getPort());
 			
-			Log.i("Initialized login (%d) and zone servers (%d)", loginServer.getPort(), zoneServer.getPort());
+			Log.i("Initialized login (%d), zone (%d), and ping (%d) servers", loginServer.getPort(), zoneServer.getPort(), pingServer.getPort());
 		} catch (SocketException e) {
 			Log.a(e);
 			if (loginServer != null)
 				loginServer.close();
 			if (zoneServer != null)
 				zoneServer.close();
+			if (pingServer != null)
+				pingServer.close();
 			loginServer = null;
 			zoneServer = null;
+			pingServer = null;
 		}
 		data = sfi.getData();
 	}
@@ -96,9 +115,13 @@ public class ClientServerService extends Service {
 		Log.t("Closing the zone udp server...");
 		if (zoneServer != null)
 			zoneServer.close();
+		Log.t("Closing the ping udp server...");
+		if (pingServer != null)
+			pingServer.close();
 		loginServer = null;
 		zoneServer = null;
-		Log.i("Closed the login and zone udp servers");
+		pingServer = null;
+		Log.i("Closed the login, zone, and ping udp servers");
 	}
 	
 	@IntentHandler
@@ -116,6 +139,14 @@ public class ClientServerService extends Service {
 		serverConnection.set(false);
 		closeConnection(ClientServer.LOGIN);
 		closeConnection(ClientServer.ZONE);
+		closeConnection(ClientServer.PING);
+	}
+	
+	@IntentHandler
+	private void handleSendPongIntent(SendPongIntent spi) {
+		InetSocketAddress lastPing = this.lastPing.get();
+		if (lastPing != null)
+			send(lastPing, ClientServer.PING, spi.getData());
 	}
 	
 	private void customizeUdpServer(DatagramSocket socket) {
@@ -138,6 +169,18 @@ public class ClientServerService extends Service {
 		process((InetSocketAddress) packet.getSocketAddress(), ClientServer.ZONE, packet.getData());
 	}
 	
+	private void onPingPacket(DatagramPacket packet) {
+		InetSocketAddress source = (InetSocketAddress) packet.getSocketAddress();
+		lastPing.set(source);
+		ProtocolStack stack = stacks.get(ClientServer.ZONE);
+		PingPacket pingPacket = new PingPacket(packet.getData());
+		pingPacket.setAddress(source.getAddress());
+		pingPacket.setPort(source.getPort());
+		
+		if (stack != null)
+			intentChain.broadcastAfter(getIntentManager(), new SonyPacketInboundIntent(stack, pingPacket));
+	}
+	
 	private void send(InetSocketAddress addr, ClientServer server, byte [] data) {
 		switch (server) {
 			case LOGIN:
@@ -146,13 +189,22 @@ public class ClientServerService extends Service {
 			case ZONE:
 				zoneServer.send(addr, data);
 				break;
+			case PING:
+				pingServer.send(addr, data);
+				break;
 		}
 	}
 	
 	private void process(InetSocketAddress source, ClientServer server, byte [] data) {
-		Packet parsed = parse(data);
-		if (parsed == null)
+		Packet parsed;
+		try {
+			parsed = (server == ClientServer.PING) ? new PingPacket(data) : parse(data);
+			if (parsed == null)
+				return;
+		} catch (BufferUnderflowException e) {
+			Log.w("Failed to parse packet: %s", ByteUtilities.getHexString(data));
 			return;
+		}
 		parsed.setAddress(source.getAddress());
 		parsed.setPort(source.getPort());
 		if (parsed instanceof MultiPacket) {
@@ -175,11 +227,14 @@ public class ClientServerService extends Service {
 	}
 	
 	private ProtocolStack process(InetSocketAddress source, ClientServer server, Packet parsed) {
+		Log.t("Process [%b] %s", serverConnection.get(), parsed);
 		if (!serverConnection.get()) {
 			if (parsed instanceof SessionRequest) {
 				cachedSessionRequest.set((SessionRequest) parsed);
 				intentChain.broadcastAfter(getIntentManager(), new RequestServerConnectionIntent());
 			}
+			for (ClientServer serverType : ClientServer.values())
+				closeConnection(serverType);
 			return null;
 		}
 		if (parsed instanceof SessionRequest)
@@ -275,8 +330,6 @@ public class ClientServerService extends Service {
 			case 0x17:
 			case 0x18:	return new Acknowledge(data);
 			default:
-				if (rawData.length == 4)
-					return new PingPacket(rawData);
 				if (rawData.length >= 6)
 					return new RawSWGPacket(rawData);
 				Log.w("Unknown SOE packet: %d  %s", opcode, ByteUtilities.getHexString(data.array()));
