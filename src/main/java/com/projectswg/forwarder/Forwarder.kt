@@ -4,15 +4,12 @@ import com.projectswg.forwarder.intents.*
 import me.joshlarson.jlcommon.concurrency.Delay
 import me.joshlarson.jlcommon.control.IntentManager
 import me.joshlarson.jlcommon.control.Manager
-import me.joshlarson.jlcommon.control.SafeMain
 import me.joshlarson.jlcommon.log.Log
-import me.joshlarson.jlcommon.log.Log.LogLevel
-import me.joshlarson.jlcommon.log.log_wrapper.ConsoleLogWrapper
-import me.joshlarson.jlcommon.utilities.ThreadUtilities
 import java.io.*
-import java.net.InetSocketAddress
+import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import java.util.zip.ZipEntry
@@ -109,11 +106,11 @@ class Forwarder {
 	
 	class ForwarderData internal constructor() {
 		
-		var address: InetSocketAddress? = null
-		var isVerifyServer = true
-		var isEncryptionEnabled = true
+		var baseConnectionUri: String? = null
 		var username: String? = null
 		var password: String? = null
+		var protocolVersion: String? = null
+		
 		var loginPort = 0
 		var zonePort = 0
 		var pingPort = 0
@@ -121,22 +118,15 @@ class Forwarder {
 		var outboundTunerInterval = 20
 		var crashed: Boolean = false
 		
-	}
-	
-	companion object {
+		val connectionUri: URI
+			get() {
+				val encodedUsername = Base64.getEncoder().encodeToString((username ?: "").encodeToByteArray())
+				val encodedPassword = Base64.getEncoder().encodeToString((password ?: "").encodeToByteArray())
+				val encodedProtocolVersion = Base64.getEncoder().encodeToString((protocolVersion ?: "").encodeToByteArray())
+				val connectionUriStr = "$baseConnectionUri?username=$encodedUsername&password=$encodedPassword&protocolVersion=$encodedProtocolVersion"
+				return URI(connectionUriStr)
+			}
 		
-		@JvmStatic
-		fun main(args: Array<String>) {
-			SafeMain.main("") { mainRunnable() }
-		}
-		
-		private fun mainRunnable() {
-			Log.addWrapper(ConsoleLogWrapper(LogLevel.TRACE))
-			val forwarder = Forwarder()
-			forwarder.data.address = InetSocketAddress(44463)
-			forwarder.run()
-			ThreadUtilities.printActiveThreads()
-		}
 	}
 	
 }

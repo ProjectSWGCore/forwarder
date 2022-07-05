@@ -1,9 +1,9 @@
 module com.projectswg.forwarder {
 	requires com.projectswg.common;
-	requires com.projectswg.holocore.client;
 	requires org.jetbrains.annotations;
 	requires me.joshlarson.jlcommon;
 	requires me.joshlarson.jlcommon.network;
+	requires me.joshlarson.websocket;
 	
 	requires java.management;
 	requires kotlin.stdlib;

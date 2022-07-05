@@ -18,7 +18,6 @@ import java.nio.BufferUnderflowException
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import java.util.function.Consumer
 
 class ClientServerService : Service() {
 	
@@ -57,11 +56,11 @@ class ClientServerService : Service() {
 		try {
 			val data = sfi.data
 			Log.t("Initializing login udp server...")
-			loginServer = UDPServer(InetSocketAddress(InetAddress.getLoopbackAddress(), data.loginPort), 16384, Consumer<DatagramPacket> { this.onLoginPacket(it) })
+			loginServer = UDPServer(InetSocketAddress(InetAddress.getLoopbackAddress(), data.loginPort), 16384) { this.onLoginPacket(it) }
 			Log.t("Initializing zone udp server...")
-			zoneServer = UDPServer(InetSocketAddress(InetAddress.getLoopbackAddress(), data.zonePort), 16384, Consumer<DatagramPacket> { this.onZonePacket(it) })
+			zoneServer = UDPServer(InetSocketAddress(InetAddress.getLoopbackAddress(), data.zonePort), 16384) { this.onZonePacket(it) }
 			Log.t("Initializing ping udp server...")
-			pingServer = UDPServer(InetSocketAddress(InetAddress.getLoopbackAddress(), data.pingPort), 16384, Consumer<DatagramPacket> { this.onPingPacket(it) })
+			pingServer = UDPServer(InetSocketAddress(InetAddress.getLoopbackAddress(), data.pingPort), 16384) { this.onPingPacket(it) }
 			
 			Log.t("Binding to login server...")
 			loginServer.bind { this.customizeUdpServer(it) }

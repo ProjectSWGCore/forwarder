@@ -56,7 +56,7 @@ class IntentRecordingService : Service() {
 		if (data == null)
 			log(cci, "")
 		else
-			log(cci, "Address='%s' Username='%s' Login='%d' Zone='%d'", data.address, data.username, data.loginPort, data.zonePort)
+			log(cci, "Base URL='%s' Username='%s' Login='%d' Zone='%d'", data.baseConnectionUri, data.username, data.loginPort, data.zonePort)
 	}
 	
 	@IntentHandler
@@ -75,7 +75,7 @@ class IntentRecordingService : Service() {
 		if (data == null)
 			log(sfi, "")
 		else
-			log(sfi, "Address='%s' Username='%s' Login='%d' Zone='%d'", data.address, data.username, data.loginPort, data.zonePort)
+			log(sfi, "Base URL='%s' Username='%s' Login='%d' Zone='%d'", data.baseConnectionUri, data.username, data.loginPort, data.zonePort)
 	}
 	
 	@IntentHandler
@@ -84,7 +84,7 @@ class IntentRecordingService : Service() {
 		if (data == null)
 			log(sci, "")
 		else
-			log(sci, "Address='%s' Username='%s' Login='%d' Zone='%d'", data.address, data.username, data.loginPort, data.zonePort)
+			log(sci, "Base URL='%s' Username='%s' Login='%d' Zone='%d'", data.baseConnectionUri, data.username, data.loginPort, data.zonePort)
 	}
 	
 	@IntentHandler

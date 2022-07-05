@@ -32,8 +32,8 @@ class ClientOutboundDataService : Service() {
 	private val outboundBuffer: Array<SequencedOutbound?> = arrayOfNulls(4096)
 	private val multiplexer: IntentMultiplexer = IntentMultiplexer(this, ProtocolStack::class.java, Packet::class.java)
 	private val activeStacks: MutableSet<ProtocolStack> = ConcurrentHashMap.newKeySet()
-	private val sendThread: BasicThread = BasicThread("outbound-sender", Runnable { this.persistentSend() })
-	private val heartbeatThread: BasicScheduledThread = BasicScheduledThread("heartbeat", Runnable { this.heartbeat() })
+	private val sendThread: BasicThread = BasicThread("outbound-sender") { this.persistentSend() }
+	private val heartbeatThread: BasicScheduledThread = BasicScheduledThread("heartbeat") { this.heartbeat() }
 	private val zoningIn: AtomicBoolean = AtomicBoolean(false)
 	private val packetNotifyLock: ReentrantLock = ReentrantLock()
 	private val packetNotify: Condition = packetNotifyLock.newCondition()

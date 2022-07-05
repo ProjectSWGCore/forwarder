@@ -20,17 +20,17 @@ idea {
 }
 
 repositories {
-	mavenLocal()
-	jcenter()
+	maven("https://dev.joshlarson.me/maven2")
+	mavenCentral()
 }
 
 sourceSets {
 	main {
-        java.outputDir = File(java.outputDir.toString().replace("\\${File.separatorChar}java", ""))
-		
 		dependencies {
+			implementation(group="org.jetbrains", name="annotations", version="20.1.0")
 			implementation(project(":pswgcommon"))
-			implementation(project(":client-holocore"))
+			api(group="me.joshlarson", name="jlcommon-network", version="1.1.1")
+			implementation(group="me.joshlarson", name="websocket", version="0.9.3")
 		}
 	}
 	test {
@@ -45,5 +45,5 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 	kotlinOptions {
 		jvmTarget = kotlinTargetJdk
 	}
-	destinationDir = sourceSets.main.get().java.outputDir
+	destinationDirectory.set(File(destinationDirectory.get().asFile.path.replace("kotlin", "java")))
 }
