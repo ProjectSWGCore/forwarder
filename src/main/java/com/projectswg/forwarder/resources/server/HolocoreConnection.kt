@@ -140,7 +140,7 @@ class HolocoreConnection(private val intentManager: IntentManager,
 		Log.t("Received login packet - upgrading to websocket")
 		connectionUri = forwarderData.connectionUri
 		outputStream = socket.getOutputStream()
-		wsProtocol = WebSocketClientProtocol(WebsocketHandler(), connectionUri.rawPath + "?" + connectionUri.rawQuery, ::writeToOutputStream, socket::close)
+		wsProtocol = WebSocketClientProtocol(WebsocketHandler(), connectionUri.rawPath + "?" + connectionUri.rawQuery, initialConnectionUri.host, ::writeToOutputStream, socket::close)
 		return true
 	}
 	

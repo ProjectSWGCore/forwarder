@@ -30,7 +30,7 @@ sourceSets {
 			implementation(group="org.jetbrains", name="annotations", version="20.1.0")
 			implementation(project(":pswgcommon"))
 			api(group="me.joshlarson", name="jlcommon-network", version="1.1.1")
-			implementation(group="me.joshlarson", name="websocket", version="0.9.3")
+			implementation(group="me.joshlarson", name="websocket", version="0.9.5")
 		}
 	}
 	test {
