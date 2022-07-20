@@ -29,14 +29,14 @@ sourceSets {
 		dependencies {
 			implementation(group="org.jetbrains", name="annotations", version="20.1.0")
 			implementation(project(":pswgcommon"))
-			api(group="me.joshlarson", name="jlcommon-network", version="1.1.1")
-			implementation(group="me.joshlarson", name="websocket", version="0.9.5")
+			api(group="me.joshlarson", name="jlcommon-network", version="1.1.2")
+			implementation(group="me.joshlarson", name="websocket", version="0.9.6")
 		}
 	}
 	test {
 		dependencies {
-			implementation(kotlin("stdlib"))
-			implementation(group="junit", name="junit", version="4.12")
+			testImplementation(kotlin("stdlib"))
+			testImplementation(group="junit", name="junit", version="4.12")
 		}
 	}
 }
