@@ -6,6 +6,7 @@ import com.projectswg.forwarder.intents.*
 import com.projectswg.forwarder.resources.networking.NetInterceptor
 import com.projectswg.forwarder.resources.server.HolocoreConnection
 import me.joshlarson.jlcommon.concurrency.BasicThread
+import me.joshlarson.jlcommon.concurrency.ScheduledThreadPool
 import me.joshlarson.jlcommon.control.IntentHandler
 import me.joshlarson.jlcommon.control.Service
 import me.joshlarson.jlcommon.log.Log
@@ -13,15 +14,26 @@ import java.util.concurrent.atomic.AtomicReference
 
 class ServerConnectionService : Service() {
 	
-	private val thread: BasicThread = BasicThread("server-connection") { this.primaryConnectionLoop() }
+	private val thread = BasicThread("server-connection") { this.primaryConnectionLoop() }
+	private val keepAliveThread = ScheduledThreadPool(1, "server-keepalive")
 	
 	private val currentConnection = AtomicReference<HolocoreConnection?>(null)
 	
 	private lateinit var interceptor: NetInterceptor // set by StartForwarderIntent
 	private lateinit var data: ForwarderData         // set by StartForwarderIntent
 	
+	override fun start(): Boolean {
+		keepAliveThread.start()
+		keepAliveThread.executeWithFixedDelay(30_000, 30_000) { currentConnection.get()?.ping() }
+		return super.start()
+	}
+	
 	override fun stop(): Boolean {
-		return stopRunningLoop(HoloConnectionStopped.ConnectionStoppedReason.APPLICATION)
+		keepAliveThread.stop()
+		val stoppedKeepAlive = keepAliveThread.awaitTermination(1000);
+		val stoppedServerConnection = stopRunningLoop(HoloConnectionStopped.ConnectionStoppedReason.APPLICATION)
+		
+		return stoppedKeepAlive && stoppedServerConnection
 	}
 	
 	@IntentHandler

@@ -79,6 +79,13 @@ class HolocoreConnection(private val intentManager: IntentManager,
 		this.disconnectReason.set(reason)
 	}
 	
+	fun ping() {
+		val currentTime = System.nanoTime()
+		val dataBuffer = NetBuffer.allocate(8)
+		dataBuffer.addLong(currentTime)
+		wsProtocol.send(WebsocketFrame(WebsocketFrameType.PING, dataBuffer.buffer.array()))
+	}
+	
 	fun sendPacket(packet: ByteArray) {
 		val bb = ByteBuffer.wrap(packet).order(ByteOrder.LITTLE_ENDIAN)
 		
@@ -241,6 +248,16 @@ class HolocoreConnection(private val intentManager: IntentManager,
 		
 		override fun onDisconnect(obj: WebSocketHandler, closeCode: Int, reason: String) {
 			connectionStatus.set(ServerConnectionStatus.DISCONNECTED)
+		}
+		
+		override fun onPong(obj: WebSocketHandler, data: ByteArray?) {
+			val currentTime = System.nanoTime()
+			data ?: return
+			if (data.size != 8)
+				return
+			val dataBuffer = NetBuffer.wrap(data)
+			val sendTime = dataBuffer.long
+			Log.d("Received pong. RTT: %dus", (currentTime - sendTime) / 1000)
 		}
 		
 		override fun onBinaryMessage(obj: WebSocketHandler, rawData: ByteArray) {
